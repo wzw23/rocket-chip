@@ -1005,9 +1005,9 @@ class CSRFile(
   io.sscratch.get := reg_sscratch
   io.vtype.get := reg_vconfig.get.vtype.asUInt
   io.vcsr.get := read_vcsr
-  io.vl.get := reg_vconfig.get.vl}
+  io.vl.get := reg_vconfig.get.vl
+  io.vstart.get := reg_vstart.get}
 
-  io.vstart.get := reg_vstart.get
   val exception = insn_call || insn_break || io.exception
   assert(PopCount(insn_ret :: insn_call :: insn_break :: io.exception :: Nil) <= 1.U, "these conditions must be mutually exclusive")
 
