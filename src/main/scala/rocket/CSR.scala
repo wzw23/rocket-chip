@@ -297,6 +297,31 @@ class CSRFileIO(implicit p: Parameters) extends CoreBundle
     val set_vstart = Flipped(Valid(vstart))
     val set_vxsat = Input(Bool())
   })
+  /**
+   * @Editors: wuzewei
+   * @Description: add for verification
+   */
+  val mepc = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mtval= coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mtvec= coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mcause = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mip = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mie = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mscratch = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val mideleg = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val medeleg = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val minstret = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val sstatus = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val sepc = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val stval = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val stvec = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val scause = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val satp = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val sscratch = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val vtype = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val vcsr = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val vl = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
+  val vstart = coreParams.useVerif.option(Output(UInt((NRET*xLen).W)))
 }
 
 class VConfig(implicit p: Parameters) extends CoreBundle {
@@ -957,6 +982,32 @@ class CSRFile(
   io.gstatus.uxl := (if (usingUser) log2Ceil(xLen) - 4 else 0).U
   io.gstatus.sd_rv32 := (xLen == 32).B && io.gstatus.sd
 
+/**
+   * @Editors: wuzewei
+   * @Description: add for verification
+   */
+  if(coreParams.useVerif){
+  io.mepc.get := read_mtvec
+  io.mtval.get := reg_mtval.sextTo(xLen)
+  io.mtvec.get := read_mtvec
+  io.mcause.get := reg_mcause
+  io.mip.get := read_mip
+  io.mie.get := reg_mie
+  io.mscratch.get := reg_mscratch 
+  io.mideleg.get := read_mideleg
+  io.medeleg.get := read_medeleg
+  io.minstret.get := reg_instret
+  io.sepc.get := readEPC(reg_sepc).sextTo(xLen) 
+  io.stval.get := reg_stval.sextTo(xLen) 
+  io.stvec.get := read_stvec
+  io.scause.get := reg_scause
+  io.satp.get := reg_satp.asUInt
+  io.sscratch.get := reg_sscratch
+  io.vtype.get := reg_vconfig.get.vtype.asUInt
+  io.vcsr.get := read_vcsr
+  io.vl.get := reg_vconfig.get.vl}
+
+  io.vstart.get := reg_vstart.get
   val exception = insn_call || insn_break || io.exception
   assert(PopCount(insn_ret :: insn_call :: insn_break :: io.exception :: Nil) <= 1.U, "these conditions must be mutually exclusive")
 
