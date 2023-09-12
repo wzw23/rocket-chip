@@ -14,6 +14,12 @@ import freechips.rocketchip.scie._
 import scala.collection.mutable.ArrayBuffer
 
 case class RocketCoreParams(
+   /**
+   * @Editors: zhangye
+   * @Description: 使用envector改写父类usingvector
+   */
+  enVector: Boolean = false,
+
   bootFreqHz: BigInt = 0,
   useVM: Boolean = true,
   useUser: Boolean = false,
@@ -70,6 +76,11 @@ case class RocketCoreParams(
   override val customIsaExt = Option.when(haveCease)("xrocket") // CEASE instruction
   override def minFLen: Int = fpu.map(_.minFLen).getOrElse(32)
   override def customCSRs(implicit p: Parameters) = new RocketCustomCSRs
+  /**
+   * @Editors: zhangye
+   * @Description: 覆写useVector
+   */  
+  override val useVector: Boolean = enVector
 }
 
 trait HasRocketCoreParameters extends HasCoreParameters {
@@ -257,6 +268,18 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val mem_scie_pipelined = Reg(Bool())
   val mem_reg_wdata = Reg(Bits())
   val mem_reg_rs2 = Reg(Bits())
+   /**
+   * @Editors: wuzewei
+   * @Description: 添加mem_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
+   */
+  val mem_reg_rs1 = Reg(Bits())
+  /**
+   * @Editors: wuzewei
+   * @Description: add for veriification
+   */
+  val mem_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
+  val mem_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+
   val mem_br_taken = Reg(Bool())
   val take_pc_mem = Wire(Bool())
   val mem_reg_wphit          = Reg(Vec(nBreakpoints, Bool()))
@@ -276,6 +299,18 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val wb_reg_raw_inst = Reg(UInt())
   val wb_reg_wdata = Reg(Bits())
   val wb_reg_rs2 = Reg(Bits())
+    /**
+   * @Editors: wuzewei
+   * @Description: 添加wb_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
+   */
+  val wb_reg_rs1 = Reg(Bits())
+  /**
+   * @Editors: wuzewei
+   * @Description: add for verification
+   */
+  val wb_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
+  val wb_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
 
@@ -641,6 +676,22 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       val size = Mux(ex_ctrl.rocc, log2Ceil(xLen/8).U, ex_reg_mem_size)
       mem_reg_rs2 := new StoreGen(size, 0.U, ex_rs(1), coreDataBytes).data
     }
+     /**
+     * @Editors: wuzewei
+     * @Description: 用来记录x[rs1]的值
+     */
+    when (ex_ctrl.rxs1) {
+      mem_reg_rs1 := ex_rs(0).asUInt
+    }
+    /**
+     * @Editors: wuzewei
+     * @Description: add for verification
+     */
+    if(coreParams.useVerif){
+    mem_reg_verif_mem_addr.get := alu.io.adder_out
+    mem_reg_verif_mem_datawr.get := (if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2))
+  }
+
     when (ex_ctrl.jalr && csr.io.status.debug) {
       // flush I$ on D-mode JALR to effect uncached fetch without D$ flush
       mem_ctrl.fence_i := true.B
@@ -686,6 +737,20 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     when (mem_ctrl.rocc || mem_reg_sfence) {
       wb_reg_rs2 := mem_reg_rs2
     }
+    /**
+     * @Editors: wuzewei
+     * @Description: x[rs1]
+     */
+    wb_reg_rs1:=mem_reg_rs1
+    /**
+     * @Editors: wuzewei
+     * @Description: add for verification
+     */
+    if(coreParams.useVerif){
+     wb_reg_verif_mem_addr.get := mem_reg_verif_mem_addr.get
+     wb_reg_verif_mem_datawr.get := mem_reg_verif_mem_datawr.get
+}
+
     wb_reg_cause := mem_cause
     wb_reg_inst := mem_reg_inst
     wb_reg_raw_inst := mem_reg_raw_inst
@@ -743,6 +808,57 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ll_wdata = WireDefault(div.io.resp.bits.data)
   val ll_waddr = WireDefault(div.io.resp.bits.tag)
   val ll_wen = WireDefault(div.io.resp.fire)
+
+    /**
+   * @Editors: wuzewei
+   * @Description: 添加avl,usemax,usezero,usecurrent信号
+   */
+  //移动wb_valid的位置 放在应用前面
+  val wb_valid = wb_reg_valid && !replay_wb && !wb_xcpt
+  val wb_raddr1 = wb_reg_inst(19,15) 
+  val wb_uimm = wb_reg_inst(19,15)
+  val wb_usemax=Wire(Bool())
+  val wb_usezero=Wire(Bool())
+  val wb_usecurrent=Wire(Bool())
+  val wb_avl=WireDefault(wb_reg_rs1)
+  wb_usemax  := (wb_raddr1===0.U)&(wb_waddr=/=0.U)
+  wb_usezero :=0.U
+  wb_usecurrent:=(wb_raddr1===0.U)&(wb_waddr===0.U)
+  when(wb_ctrl.rxs1===0.U){
+    val symbol=Fill(xLen-1-5,0.U)
+    wb_avl := Cat(symbol,wb_uimm)
+  }
+  val issue_vconfig = Wire(new VConfig)
+  // val issue_vstart = Wire(UInt(maxVLMax.log2.W))
+  // val issue_vxsat = Wire(Bool())
+  val zeroSignal=0.U(((xLen)-8).W)
+  val zimm=Cat(zeroSignal,wb_reg_wdata(7,0))
+  issue_vconfig.vtype := VType.fromUInt(zimm,true)
+  issue_vconfig.vl := VType.computeVL(wb_avl,zimm,csr.io.vector.get.vconfig.vl,wb_usecurrent,wb_usemax,wb_usezero)
+  csr.io.vector.foreach { vio =>
+    vio.set_vconfig.bits := issue_vconfig   
+    vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset)
+    vio.set_vstart.valid := false.asBool
+    vio.set_vstart.bits := 0.U
+    vio.set_vxsat := 0.U
+    vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
+    //vio.set_vs_dirty := false.asBool
+    
+    }
+
+  //加decode接口，jyf
+  dontTouch(io.decode_interface)
+  io.decode_interface.instr := id_inst(0)   
+  io.decode_interface.rs1 := ex_rs(0)
+  io.decode_interface.rs2 := ex_rs(1)
+  io.decode_interface.valid := !ctrl_killd && id_ctrl.vector
+  io.decode_interface.vl := csr.io.vector.get.vconfig.vl
+  io.decode_interface.vstart := csr.io.vector.get.vstart
+  io.decode_interface.vma := csr.io.vector.get.vconfig.vtype.vma
+  io.decode_interface.vta := csr.io.vector.get.vconfig.vtype.vta
+  io.decode_interface.vsew := csr.io.vector.get.vconfig.vtype.vsew
+  io.decode_interface.vlmul := csr.io.vector.get.vconfig.vtype.vlmul_signed.asUInt
+
   if (usingRoCC) {
     io.rocc.resp.ready := !wb_wxd
     when (io.rocc.resp.fire) {
@@ -760,15 +876,19 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     ll_wen := true.B
   }
 
-  val wb_valid = wb_reg_valid && !replay_wb && !wb_xcpt
   val wb_wen = wb_valid && wb_ctrl.wxd
   val rf_wen = wb_wen || ll_wen
   val rf_waddr = Mux(ll_wen, ll_waddr, wb_waddr)
   val rf_wdata = Mux(dmem_resp_valid && dmem_resp_xpu, io.dmem.resp.bits.data(xLen-1, 0),
+                 /**
+                  * @Editors: wuzewei
+                  * @Description: 若是vset(i)vl(i)信号，则写回的是从csr返回的vl的值
+                  */
+                 Mux(wb_ctrl.vset,issue_vconfig.vl,
                  Mux(ll_wen, ll_wdata,
                  Mux(wb_ctrl.csr =/= CSR.N, csr.io.rw.rdata,
                  Mux(wb_ctrl.mul, mul.map(_.io.resp.bits.data).getOrElse(wb_reg_wdata),
-                 wb_reg_wdata))))
+                 wb_reg_wdata)))))
   when (rf_wen) { rf.write(rf_waddr, rf_wdata) }
 
   // hook up control/status regfile
@@ -991,6 +1111,107 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   when (unpause) { id_reg_pause := false.B }
   io.cease := csr.io.status.cease && !clock_en_reg
   io.wfi := csr.io.status.wfi
+/**
+   * @Editors: wuzewei
+   * @Description: verif接口
+   */
+  //有的信号延迟一拍的原因是区分before和after信号
+if(coreParams.useVerif){
+  dontTouch(io.verif.get)
+  io.verif.get.commit_valid := RegEnable(wb_reg_valid,0.U,coreParams.useVerif.B)
+  io.verif.get.commit_prevPc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
+//io.verif.get.commit_currPc  
+//verif_commit_order
+  io.verif.get.commit_insn := RegEnable(wb_reg_inst,0.U,coreParams.useVerif.B)
+  io.verif.get.commit_fused := false.asBool
+
+//verif_sim_halt
+
+  io.verif.get.trap_valid := RegEnable(wb_xcpt,0.U,coreParams.useVerif.B)
+  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
+  io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
+
+//因为延迟了一个周期所以寄存器中的值是after commit
+  io.verif.get.reg_gpr := rf.ver_read()
+//fpu寄存器的值通过fpu io接口引出
+  io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
+//verif_reg_vpr
+  io.verif.get.dest_gprWr := RegEnable(wb_ctrl.wxd,0.U,coreParams.useVerif.B)
+  io.verif.get.dest_fprWr := RegEnable(wb_ctrl.wfd,0.U,coreParams.useVerif.B)
+//verif_dest_vprWr
+  io.verif.get.dest_idx := RegEnable(wb_waddr,0.U,coreParams.useVerif.B)
+//verif_src_vmaskRd
+  io.verif.get.src1_gprRd := RegEnable(wb_ctrl.rxs1,0.U,coreParams.useVerif.B)
+  io.verif.get.src1_fprRd := RegEnable(wb_ctrl.rfs1,0.U,coreParams.useVerif.B)
+//verif_src1_vprRd
+  io.verif.get.src1_idx := RegEnable(wb_raddr1,0.U,coreParams.useVerif.B)//是直接向后引还是取再次译码的值 有时间的话再引
+  io.verif.get.src2_gprRd := RegEnable(wb_ctrl.rxs2,0.U,coreParams.useVerif.B)
+  io.verif.get.src2_fprRd := RegEnable(wb_ctrl.rfs2,0.U,coreParams.useVerif.B)
+//verif_src2_vprRd
+  io.verif.get.src2_idx :=  RegEnable(wb_reg_inst(24,20),0.U,coreParams.useVerif.B)
+  io.verif.get.src3_gprRd := false.B
+  io.verif.get.src3_fprRd := false.B
+//verif_src3_vprRd
+//verif_src3_idx
+
+  io.verif.get.csr_mstatusWr := csr.io.status.asUInt
+  io.verif.get.csr_mepcWr := csr.io.mepc.get 
+  io.verif.get.csr_mtvalWr := csr.io.mtval.get
+  io.verif.get.csr_mtvecWr := csr.io.mtvec.get
+  io.verif.get.csr_mcauseWr := csr.io.mcause.get
+  io.verif.get.csr_mipWr := csr.io.mip.get
+  io.verif.get.csr_mieWr := csr.io.mie.get
+  io.verif.get.csr_mscratchWr := csr.io.mscratch.get
+  io.verif.get.csr_midelegWr := csr.io.mideleg.get
+  io.verif.get.csr_medelegWr := csr.io.medeleg.get
+  io.verif.get.csr_minstretWr := csr.io.minstret.get
+  io.verif.get.csr_sstatusWr := csr.io.sstatus.get.asUInt
+  io.verif.get.csr_sepcWr := csr.io.sepc.get
+  io.verif.get.csr_stvalWr := csr.io.stval.get
+  io.verif.get.csr_stvecWr := csr.io.stvec.get
+  io.verif.get.csr_scauseWr := csr.io.scause.get
+  io.verif.get.csr_satpWr := csr.io.satp.get
+  io.verif.get.csr_sscratchWr := csr.io.sscratch.get
+  io.verif.get.csr_vtypeWr := csr.io.vtype.get
+  io.verif.get.csr_vcsrWr := csr.io.vcsr.get
+  io.verif.get.csr_vlWr := csr.io.vl.get
+  io.verif.get.csr_vstartWr := csr.io.vstart.get
+
+  io.verif.get.csr_mstatusRd := RegEnable(csr.io.status.asUInt,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mepcRd := RegEnable(csr.io.mepc.get ,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mtvalRd := RegEnable(csr.io.mtval.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mtvecRd := RegEnable(csr.io.mtvec.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mcauseRd := RegEnable(csr.io.mcause.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mipRd := RegEnable(csr.io.mip.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mieRd := RegEnable(csr.io.mie.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_mscratchRd := RegEnable(csr.io.mscratch.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_midelegRd := RegEnable(csr.io.mideleg.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_medelegRd := RegEnable(csr.io.medeleg.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_minstretRd := RegEnable(csr.io.minstret.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_sstatusRd := RegEnable(csr.io.sstatus.get.asUInt,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_sepcRd := RegEnable(csr.io.sepc.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_stvalRd := RegEnable(csr.io.stval.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_stvecRd := RegEnable(csr.io.stvec.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_scauseRd := RegEnable(csr.io.scause.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_satpRd := RegEnable(csr.io.satp.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_sscratchRd := RegEnable(csr.io.sscratch.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_vtypeRd := RegEnable(csr.io.vtype.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_vcsrRd := RegEnable(csr.io.vcsr.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_vlRd := RegEnable(csr.io.vl.get,0.U,coreParams.useVerif.B)
+  io.verif.get.csr_vstartRd := RegEnable(csr.io.vstart.get,0.U,coreParams.useVerif.B)
+
+  io.verif.get.mem_valid := RegEnable(((wb_ctrl.mem_cmd === M_XRD)||(wb_ctrl.mem_cmd === M_XWR))&(wb_valid),0.U,coreParams.useVerif.B) //TODO:vector在这需要进行判断加一个或条件 
+  io.verif.get.mem_addr := RegEnable(wb_reg_verif_mem_addr.get,0.U,coreParams.useVerif.B) 
+  io.verif.get.mem_isStore := RegEnable((wb_ctrl.mem_cmd === M_XRD),0.U,coreParams.useVerif.B)
+  io.verif.get.mem_isLoad  := RegEnable((wb_ctrl.mem_cmd === M_XWR),0.U,coreParams.useVerif.B)  
+  io.verif.get.mem_isVector := RegEnable((wb_ctrl.vector===true.B),0.U,coreParams.useVerif.B)
+  val delay_wb_reg_mem_size = RegEnable(1.U<<(1.U<<wb_reg_mem_size)-1.U,0.U,coreParams.useVerif.B)
+  io.verif.get.mem_maskWr := delay_wb_reg_mem_size
+  io.verif.get.mem_maskRd := delay_wb_reg_mem_size 
+  io.verif.get.mem_dataWr := RegEnable(wb_reg_verif_mem_datawr.get,0.U,coreParams.useVerif.B) 
+  io.verif.get.mem_datatRd := RegEnable(io.dmem.resp.bits.data(xLen-1, 0),0.U,coreParams.useVerif.B)
+}
+
   if (rocketParams.clockGate) {
     long_latency_stall := csr.io.csr_stall || io.dmem.perf.blocked || id_reg_pause && !unpause
     clock_en := clock_en_reg || ex_pc_valid || (!long_latency_stall && io.imem.resp.valid)
@@ -1068,6 +1289,15 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
          Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1src, 0.U),
          Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1val, 0.U),
          coreMonitorBundle.inst, coreMonitorBundle.inst)
+
+        /**
+         * @Editors: wuzewei
+         * @Description: add vtrace
+         */
+        if(openvtrace){
+        when(wb_valid){
+          printf(p"finish signal:vtype:${csr.io.vector.get.vconfig.vtype.asUInt}, vl:${csr.io.vector.get.vconfig.vl} \n") 
+        }}
     }
   }
 
@@ -1159,6 +1389,18 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
       for ((raddr, rdata) <- reads)
         when (addr === raddr) { rdata := data }
     }
+  }
+  /**
+   * @Editors: wuzewei
+   * @Description: work for verification
+   */
+  def ver_read() = {
+     val memoryValues = Wire(Vec(n,UInt(w.W)))
+     memoryValues(0):=0.U
+     for(i<- 1 until n){
+      memoryValues(i):= access(i.U)  
+    }
+    Cat(memoryValues)
   }
 }
 
