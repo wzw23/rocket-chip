@@ -114,6 +114,39 @@ class WithNBigCores(
   }
 })
 
+/**
+ * @Editors: zhangye
+ * @Description: 添加usevector功能
+ */
+class WithVectorNBigCores(
+  n: Int,
+  overrideIdOffset: Option[Int] = None,
+  crossing: RocketCrossingParams = RocketCrossingParams()
+) extends Config((site, here, up) => {
+  case TilesLocated(InSubsystem) => {
+    val prev = up(TilesLocated(InSubsystem), site)
+    val idOffset = overrideIdOffset.getOrElse(prev.size)
+    val big = RocketTileParams(
+      core   = RocketCoreParams(
+        enVector = true,
+        mulDiv = Some(MulDivParams(
+         mulUnroll = 8,
+         mulEarlyOut = true,
+         divEarlyOut = true))),
+      dcache = Some(DCacheParams(
+        rowBits = site(SystemBusKey).beatBits,
+        nMSHRs = 0,
+        blockBytes = site(CacheBlockBytes))),
+      icache = Some(ICacheParams(
+        rowBits = site(SystemBusKey).beatBits,
+        blockBytes = site(CacheBlockBytes))))
+    List.tabulate(n)(i => RocketTileAttachParams(
+      big.copy(hartId = i + idOffset),
+      crossing
+    )) ++ prev
+  }
+})
+
 class WithNMedCores(
   n: Int,
   overrideIdOffset: Option[Int] = None,
