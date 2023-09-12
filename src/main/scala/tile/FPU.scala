@@ -205,11 +205,17 @@ class FPUCoreIO(implicit p: Parameters) extends CoreBundle()(p) {
   val sboard_clra = Output(UInt(5.W))
 
   val keep_clock_enabled = Input(Bool())
+  /**
+ * @Editors: wuzewei
+ * @Description: add for verification
+ */
+  val fpu_ver_reg = coreParams.useVerif.option(Output(UInt((NRET*32*fLen).W)))
 }
 
 class FPUIO(implicit p: Parameters) extends FPUCoreIO ()(p) {
   val cp_req = Flipped(Decoupled(new FPInput())) //cp doesn't pay attn to kill sigs
   val cp_resp = Decoupled(new FPResult())
+
 }
 
 class FPResult(implicit p: Parameters) extends CoreBundle()(p) {
@@ -791,6 +797,17 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
 
   // regfile
   val regfile = Mem(32, Bits((fLen+1).W))
+  /**
+   * @Editors: wuzewei
+   * @Description: add for verification
+   */
+  if(coreParams.useVerif){
+  val memoryValues = Wire(Vec(32,UInt((fLen+1).W)))
+  for(i<-0 until 32){
+    memoryValues(i):= regfile(i)
+  }
+  io.fpu_ver_reg.get := Cat(memoryValues)
+}
   when (load_wb) {
     val wdata = recode(load_wb_data, load_wb_typeTag)
     regfile(load_wb_tag) := wdata

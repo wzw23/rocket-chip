@@ -68,10 +68,23 @@ trait CoreParams {
   def dcacheReqTagBits: Int = 6
 
   def minFLen: Int = 32
-  def vLen: Int = 0
+  /**
+   * @Editors: wuzewei
+   * @Description: change the vlen
+   */
+  def vLen: Int =128 
   def sLen: Int = 0
   def eLen(xLen: Int, fLen: Int): Int = xLen max fLen
-  def vMemDataBits: Int = 0
+  /**
+   * @Editors: wuzewei
+   * @Description: change the vmemdatabits
+   */
+  def vMemDataBits: Int = 64 
+  /**
+   * @Editors: wuzewei
+   * @Description: add for verification
+   */
+  val useVerif: Boolean = true
 }
 
 trait HasCoreParameters extends HasTileParameters {
@@ -139,6 +152,16 @@ trait HasCoreParameters extends HasTileParameters {
   // Requires post-processing due to out-of-order writebacks.
   val enableCommitLog = false
 
+  /**
+   * @Editors: wuzewei
+   * @Description: 用来开启trace 方便查看
+   */
+  //usetrace trace总开关
+  val opentrace = true
+  //vtrace 副开关
+  val openvtrace = true
+  val usevtrace = if(opentrace & openvtrace) true else false
+
 }
 
 abstract class CoreModule(implicit val p: Parameters) extends Module
@@ -157,7 +180,7 @@ class TraceBundle(implicit val p: Parameters) extends Bundle with HasCoreParamet
   val time = UInt(64.W)
   val custom = coreParams.traceCustom
 }
-
+//加接口io，jyf
 trait HasCoreIO extends HasTileParameters {
   implicit val p: Parameters
   def nTotalRoCCCSRs: Int
@@ -175,5 +198,11 @@ trait HasCoreIO extends HasTileParameters {
     val cease = Bool().asOutput
     val wfi = Bool().asOutput
     val traceStall = Bool().asInput
+    val decode_interface = new DecodeIO
+    /**
+     * @Editors: wuzewei
+     * @Description: add for verification
+     */
+    val verif = coreParams.useVerif.option(new VERIO)
   }
 }
