@@ -310,6 +310,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    */
   val wb_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
   val wb_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+  val wb_npc = coreParams.useVerif.option(Reg(Bits()))
 
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
@@ -749,6 +750,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     if(coreParams.useVerif){
      wb_reg_verif_mem_addr.get := mem_reg_verif_mem_addr.get
      wb_reg_verif_mem_datawr.get := mem_reg_verif_mem_datawr.get
+     wb_npc.get := mem_npc
 }
 
     wb_reg_cause := mem_cause
@@ -1120,12 +1122,16 @@ if(coreParams.useVerif){
   dontTouch(io.verif.get)
   io.verif.get.commit_valid := RegEnable(wb_reg_valid,0.U,coreParams.useVerif.B)
   io.verif.get.commit_prevPc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
-//io.verif.get.commit_currPc  
-//verif_commit_order
+  io.verif.get.commit_currPc := wb_npc.get 
+  val reg_commit_order = RegInit(0.U((NRET*10).W))
+  when(wb_reg_valid&(coreParams.useVerif.B)){
+      reg_commit_order := reg_commit_order + 1.U
+  }
+  io.verif.get.commit_order := reg_commit_order
   io.verif.get.commit_insn := RegEnable(wb_reg_inst,0.U,coreParams.useVerif.B)
-  io.verif.get.commit_fused := false.asBool
+  io.verif.get.commit_fused := 0.U
 
-//verif_sim_halt
+  io.verif.get.sim_halt := 0.U
 
   io.verif.get.trap_valid := RegEnable(wb_xcpt,0.U,coreParams.useVerif.B)
   io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
