@@ -1122,7 +1122,7 @@ if(coreParams.useVerif){
   dontTouch(io.verif.get)
   io.verif.get.commit_valid := RegEnable(wb_reg_valid,0.U,coreParams.useVerif.B)
   io.verif.get.commit_prevPc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
-  io.verif.get.commit_currPc := wb_npc.get 
+  io.verif.get.commit_currPc := RegEnable(wb_npc.get,0.U,coreParams.useVerif.B)
   val reg_commit_order = RegInit(0.U((NRET*10).W))
   when(wb_reg_valid&(coreParams.useVerif.B)){
       reg_commit_order := reg_commit_order + 1.U
@@ -1137,11 +1137,15 @@ if(coreParams.useVerif){
   io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
   io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
 
+
 //因为延迟了一个周期所以寄存器中的值是after commit
   io.verif.get.reg_gpr := rf.ver_read()
 //fpu寄存器的值通过fpu io接口引出
   io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
 //verif_reg_vpr
+
+  //TODO: open later now set to 0
+/*
   io.verif.get.dest_gprWr := RegEnable(wb_ctrl.wxd,0.U,coreParams.useVerif.B)
   io.verif.get.dest_fprWr := RegEnable(wb_ctrl.wfd,0.U,coreParams.useVerif.B)
 //verif_dest_vprWr
@@ -1159,6 +1163,24 @@ if(coreParams.useVerif){
   io.verif.get.src3_fprRd := false.B
 //verif_src3_vprRd
 //verif_src3_idx
+*/
+  io.verif.get.dest_gprWr := 0.U
+  io.verif.get.dest_fprWr := 0.U
+  io.verif.get.dest_vprWr := 0.U
+  io.verif.get.dest_idx := 0.U
+  io.verif.get.src_vmaskRd :=0.U
+  io.verif.get.src1_gprRd := 0.U
+  io.verif.get.src1_fprRd := 0.U
+  io.verif.get.src1_vprRd := 0.U
+  io.verif.get.src1_idx := 0.U
+  io.verif.get.src2_gprRd := 0.U
+  io.verif.get.src2_fprRd := 0.U
+  io.verif.get.src2_vprRd := 0.U
+  io.verif.get.src2_idx := 0.U
+  io.verif.get.src3_gprRd := 0.U
+  io.verif.get.src3_fprRd := 0.U
+  io.verif.get.src3_vprRd := 0.U
+  io.verif.get.src3_idx := 0.U
 
   io.verif.get.csr_mstatusWr := csr.io.status.asUInt
   io.verif.get.csr_mepcWr := csr.io.mepc.get 
@@ -1183,30 +1205,57 @@ if(coreParams.useVerif){
   io.verif.get.csr_vlWr := csr.io.vl.get
   io.verif.get.csr_vstartWr := csr.io.vstart.get
 
-  io.verif.get.csr_mstatusRd := RegEnable(csr.io.status.asUInt,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mepcRd := RegEnable(csr.io.mepc.get ,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mtvalRd := RegEnable(csr.io.mtval.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mtvecRd := RegEnable(csr.io.mtvec.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mcauseRd := RegEnable(csr.io.mcause.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mipRd := RegEnable(csr.io.mip.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mieRd := RegEnable(csr.io.mie.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_mscratchRd := RegEnable(csr.io.mscratch.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_midelegRd := RegEnable(csr.io.mideleg.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_medelegRd := RegEnable(csr.io.medeleg.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_minstretRd := RegEnable(csr.io.minstret.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_sstatusRd := RegEnable(csr.io.sstatus.get.asUInt,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_sepcRd := RegEnable(csr.io.sepc.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_stvalRd := RegEnable(csr.io.stval.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_stvecRd := RegEnable(csr.io.stvec.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_scauseRd := RegEnable(csr.io.scause.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_satpRd := RegEnable(csr.io.satp.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_sscratchRd := RegEnable(csr.io.sscratch.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_vtypeRd := RegEnable(csr.io.vtype.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_vcsrRd := RegEnable(csr.io.vcsr.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_vlRd := RegEnable(csr.io.vl.get,0.U,coreParams.useVerif.B)
-  io.verif.get.csr_vstartRd := RegEnable(csr.io.vstart.get,0.U,coreParams.useVerif.B)
+  //TODO: open later now set to 0
+  /*
+    io.verif.get.csr_mstatusRd := RegEnable(csr.io.status.asUInt,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mepcRd := RegEnable(csr.io.mepc.get ,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mtvalRd := RegEnable(csr.io.mtval.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mtvecRd := RegEnable(csr.io.mtvec.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mcauseRd := RegEnable(csr.io.mcause.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mipRd := RegEnable(csr.io.mip.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mieRd := RegEnable(csr.io.mie.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_mscratchRd := RegEnable(csr.io.mscratch.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_midelegRd := RegEnable(csr.io.mideleg.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_medelegRd := RegEnable(csr.io.medeleg.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_minstretRd := RegEnable(csr.io.minstret.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_sstatusRd := RegEnable(csr.io.sstatus.get.asUInt,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_sepcRd := RegEnable(csr.io.sepc.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_stvalRd := RegEnable(csr.io.stval.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_stvecRd := RegEnable(csr.io.stvec.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_scauseRd := RegEnable(csr.io.scause.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_satpRd := RegEnable(csr.io.satp.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_sscratchRd := RegEnable(csr.io.sscratch.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_vtypeRd := RegEnable(csr.io.vtype.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_vcsrRd := RegEnable(csr.io.vcsr.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_vlRd := RegEnable(csr.io.vl.get,0.U,coreParams.useVerif.B)
+    io.verif.get.csr_vstartRd := RegEnable(csr.io.vstart.get,0.U,coreParams.useVerif.B)
+  */
+  io.verif.get.csr_mstatusRd := 0.U
+  io.verif.get.csr_mepcRd := 0.U
+  io.verif.get.csr_mtvalRd := 0.U
+  io.verif.get.csr_mtvecRd := 0.U
+  io.verif.get.csr_mcauseRd := 0.U
+  io.verif.get.csr_mipRd := 0.U
+  io.verif.get.csr_mieRd := 0.U
+  io.verif.get.csr_mscratchRd := 0.U
+  io.verif.get.csr_midelegRd := 0.U
+  io.verif.get.csr_medelegRd := 0.U
+  io.verif.get.csr_minstretRd := 0.U
+  io.verif.get.csr_sstatusRd := 0.U
+  io.verif.get.csr_sepcRd := 0.U
+  io.verif.get.csr_stvalRd := 0.U
+  io.verif.get.csr_stvecRd := 0.U
+  io.verif.get.csr_scauseRd := 0.U
+  io.verif.get.csr_satpRd := 0.U
+  io.verif.get.csr_sscratchRd := 0.U
+  io.verif.get.csr_vtypeRd := 0.U
+  io.verif.get.csr_vcsrRd := 0.U
+  io.verif.get.csr_vlRd := 0.U
+  io.verif.get.csr_vstartRd := 0.U
 
-  io.verif.get.mem_valid := RegEnable(((wb_ctrl.mem_cmd === M_XRD)||(wb_ctrl.mem_cmd === M_XWR))&(wb_valid),0.U,coreParams.useVerif.B) //TODO:vector在这需要进行判断加一个或条件 
+  //TODO: open later now set to 0
+/*
+  io.verif.get.mem_valid := RegEnable(((wb_ctrl.mem_cmd === M_XRD)||(wb_ctrl.mem_cmd === M_XWR))&(wb_valid),0.U,coreParams.useVerif.B) //TODO:vector在这需要进行判断加一个或条件
   io.verif.get.mem_addr := RegEnable(wb_reg_verif_mem_addr.get,0.U,coreParams.useVerif.B) 
   io.verif.get.mem_isStore := RegEnable((wb_ctrl.mem_cmd === M_XRD),0.U,coreParams.useVerif.B)
   io.verif.get.mem_isLoad  := RegEnable((wb_ctrl.mem_cmd === M_XWR),0.U,coreParams.useVerif.B)  
@@ -1216,6 +1265,17 @@ if(coreParams.useVerif){
   io.verif.get.mem_maskRd := delay_wb_reg_mem_size 
   io.verif.get.mem_dataWr := RegEnable(wb_reg_verif_mem_datawr.get,0.U,coreParams.useVerif.B) 
   io.verif.get.mem_datatRd := RegEnable(io.dmem.resp.bits.data(xLen-1, 0),0.U,coreParams.useVerif.B)
+  */
+  io.verif.get.mem_valid := 0.U
+  io.verif.get.mem_addr := 0.U
+  io.verif.get.mem_isStore := 0.U
+  io.verif.get.mem_isLoad := 0.U
+  io.verif.get.mem_isVector := 0.U
+  io.verif.get.mem_maskWr := 0.U
+  io.verif.get.mem_maskRd := 0.U
+  io.verif.get.mem_dataWr := 0.U
+  io.verif.get.mem_datatRd := 0.U
+
 }
 
   if (rocketParams.clockGate) {
