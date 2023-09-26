@@ -25,6 +25,16 @@ module TestDriver;
   reg [2047:0] vcdplusfile = 0;
   reg [2047:0] vcdfile = 0;
   int unsigned rand_value;
+
+	 initial 
+	 begin
+      $fsdbDumpfile("tb_top");
+      $fsdbDumpvars("+all");		
+	 end
+
+
+
+
   initial
   begin
     void'($value$plusargs("max-cycles=%d", max_cycles));
@@ -47,23 +57,29 @@ module TestDriver;
 `endif
     end
 
+
+
+
 `ifdef DEBUG
 
     if ($value$plusargs("vcdplusfile=%s", vcdplusfile))
     begin
 `ifdef VCS
-      $vcdplusfile(vcdplusfile);
+     // $vcdplusfile(vcdplusfile);
 `else
-      $fdisplay(stderr, "Error: +vcdplusfile is VCS-only; use +vcdfile instead or recompile with VCS=1");
-      $fatal;
+      //$fdisplay(stderr, "Error: +vcdplusfile is VCS-only; use +vcdfile instead or recompile with VCS=1");
+     // $fatal;
 `endif
     end
 
     if ($value$plusargs("fsdbfile=%s", fsdbfile))
     begin
 `ifdef FSDB
-      $fsdbDumpfile(fsdbfile);
-      $fsdbDumpvars("+all");
+     // $fsdbDumpfile(fsdbfile);
+      //$fsdbDumpvars("+all");
+
+      //$fsdbDumpfile("tb_top");
+      //$fsdbDumpvars("+all");		
       //$fsdbDumpSVA;
 `else
       $fdisplay(stderr, "Error: +fsdbfile is FSDB-only; use +vcdfile/+vcdplus instead or recompile with FSDB=1");
@@ -73,8 +89,8 @@ module TestDriver;
 
     if ($value$plusargs("vcdfile=%s", vcdfile))
     begin
-      $dumpfile(vcdfile);
-      $dumpvars(0, testHarness);
+     // $dumpfile(vcdfile);
+      //$dumpvars(0, testHarness);
     end
 
 `ifdef FSDB
@@ -92,6 +108,8 @@ module TestDriver;
 `define VCDPLUSON
 `define VCDPLUSCLOSE
 
+
+
     if ($test$plusargs("vcdplusfile=") || $test$plusargs("vcdfile=") || $test$plusargs("fsdbfile="))
     begin
       $fdisplay(stderr, "Error: +vcdfile, +vcdplusfile, or +fsdbfile requested but compile did not have +define+DEBUG enabled");
@@ -105,7 +123,9 @@ module TestDriver;
       // Start dumping before first clock edge to capture reset sequence in waveform
       `VCDPLUSON
     end
+	 
   end
+
 
 `ifdef TESTBENCH_IN_UVM
   // UVM library has its own way to manage end-of-simulation.
@@ -160,6 +180,10 @@ module TestDriver;
       end
     end
   end
+
+    
+
+
 
   `MODEL testHarness(
     .clock(clock),

@@ -726,7 +726,22 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ctrl_killm = killm_common || mem_xcpt || fpu_kill_mem
 
   // writeback stage
+  //wzw:add for commit stage,Set it to 0 for now and connect to the vpu interface later.,
+  val commit_vld = WireDefault(false.B)
+  val return_data_vld = WireDefault(false.B)
+  val return_data = WireDefault(0.U)
+  val retrun_reg_idx = WireDefault(0.U)
+  val exception_vld = WireDefault(0.B)
+  val illegal_inst = WireDefault(0.B)
+  val update_vl = WireDefault(0.U)
+  val update_vsart = WireDefault(0.U)
+  val update_data = WireDefault(0.U)
+  //add exception and pc interface
+  val vpu_pc = WireDefault(0.U)
+  val vpu_mcause = WireDefault(0.U)
+
   wb_reg_valid := !ctrl_killm
+    //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
@@ -766,6 +781,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }
 
   val (wb_xcpt, wb_cause) = checkExceptions(List(
+    //wzw:若是非法指令的话将wb_cause设置为0x2
+    (commit_vld&&illegal_inst,Causes.illegal_instruction.U),
+    //wzw:若是访存异常的话，将wb_cause设置为vpu传过来的异常号
+    (commit_vld&&exception_vld,vpu_mcause),
     (wb_reg_xcpt,  wb_reg_cause),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),
@@ -868,6 +887,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       ll_wdata := io.rocc.resp.bits.data
       ll_waddr := io.rocc.resp.bits.rd
       ll_wen := true.B
+    }
+  }
+  //wzw:写回阶段的接口
+  if(usingVector){
+    when(commit_vld){
+      ll_wdata := return_data
+      ll_wen := return_data_vld
+      ll_waddr := retrun_reg_idx
     }
   }
   when (dmem_resp_replay && dmem_resp_xpu) {
