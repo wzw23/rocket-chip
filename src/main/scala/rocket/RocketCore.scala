@@ -727,6 +727,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   // writeback stage
   //wzw:add for commit stage,Set it to 0 for now and connect to the vpu interface later.,
+  val v_decode_ready=WireDefault(true.B)
   val commit_vld = WireDefault(false.B)
   val return_data_vld = WireDefault(false.B)
   val return_data = WireDefault(0.U)
@@ -734,11 +735,13 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val exception_vld = WireDefault(0.B)
   val illegal_inst = WireDefault(0.B)
   val update_vl = WireDefault(0.U)
-  val update_vsart = WireDefault(0.U)
+  val update_vstart = WireDefault(0.U)
   val update_data = WireDefault(0.U)
   //add exception and pc interface
   val vpu_pc = WireDefault(0.U)
   val vpu_mcause = WireDefault(0.U)
+
+
 
   wb_reg_valid := !ctrl_killm
     //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
@@ -813,6 +816,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val wb_pc_valid = wb_reg_valid || wb_reg_replay || wb_reg_xcpt
   val wb_wxd = wb_reg_valid && wb_ctrl.wxd
   val wb_set_sboard = wb_ctrl.div || wb_dcache_miss || wb_ctrl.rocc
+    //wzw 防止vpu产生的写后读问题
+  val id_set_sboard = id_ctrl.vector
   val replay_wb_common = io.dmem.s2_nack || wb_reg_replay
   val replay_wb_rocc = wb_reg_valid && wb_ctrl.rocc && !io.rocc.cmd.ready
   val replay_wb = replay_wb_common || replay_wb_rocc
@@ -859,12 +864,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   csr.io.vector.foreach { vio =>
     vio.set_vconfig.bits := issue_vconfig   
     vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset)
-    vio.set_vstart.valid := false.asBool
-    vio.set_vstart.bits := 0.U
+    //wzw:change for updating vstart
+    vio.set_vstart.valid := (commit_vld & update_vl)
+    vio.set_vstart.bits := update_data
     vio.set_vxsat := 0.U
     vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
     //vio.set_vs_dirty := false.asBool
-    
     }
 
   //加decode接口，jyf
@@ -906,6 +911,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }
 
   val wb_wen = wb_valid && wb_ctrl.wxd
+  //wzw 防止vpu可能产生的写后读问题
+  val id_wen = (!ctrl_killd) & wb_ctrl.wxd
   val rf_wen = wb_wen || ll_wen
   val rf_waddr = Mux(ll_wen, ll_waddr, wb_waddr)
   val rf_wdata = Mux(dmem_resp_valid && dmem_resp_xpu, io.dmem.resp.bits.data(xLen-1, 0),
@@ -934,7 +941,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   io.fpu.time := csr.io.time(31,0)
   io.fpu.hartid := io.hartid
   csr.io.rocc_interrupt := io.rocc.interrupt
-  csr.io.pc := wb_reg_pc
+  //wzw：当vpu返回的值有效时，此时的pc是vpu传过来的pc
+  when(commit_vld){
+    csr.io.pc := vpu_pc
+  }.otherwise{
+    csr.io.pc := wb_reg_pc
+  }
   val tval_dmem_addr = !wb_reg_xcpt
   val tval_any_addr = tval_dmem_addr ||
     wb_reg_cause.isOneOf(Causes.breakpoint.U, Causes.fetch_access.U, Causes.fetch_page_fault.U, Causes.fetch_guest_page_fault.U)
@@ -1001,7 +1013,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     else div.io.resp.fire && div.io.resp.bits.tag === r || dmem_resp_replay && dmem_resp_xpu && dmem_resp_waddr === r
   }
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
-  sboard.set(wb_set_sboard && wb_wen, wb_waddr)
+  //wzw: 添加vpu设置scoreboard支持
+  val sboard_waddr =Mux((id_set_sboard & id_wen), id_waddr,wb_waddr)
+  sboard.set((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined
@@ -1042,7 +1056,17 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val rocc_blocked = Reg(Bool())
   rocc_blocked := !wb_xcpt && !io.rocc.cmd.ready && (io.rocc.cmd.valid || rocc_blocked)
 
-  val ctrl_stalld =
+  //if vpu busy, satll rocket，jyf
+  //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
+  //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
+  val table = RegInit(0.U(4.W))
+  when(io.decode_interface.valid&v_decode_ready) {table := table + 1.U}
+  when(commit_vld) {table := table - 1.U}
+  val isvectorrun = table =/= 0.U
+
+  val ctrl_stalld = {
+    //jyf:add stall logic
+    (id_ctrl.vector&&(!v_decode_ready))||(isvectorrun && !id_ctrl.vector)||
     id_ex_hazard || id_mem_hazard || id_wb_hazard || id_sboard_hazard ||
     csr.io.singleStep && (ex_reg_valid || mem_reg_valid || wb_reg_valid) ||
     id_csr_en && csr.io.decode(0).fp_csr && !io.fpu.fcsr_rdy ||
@@ -1055,7 +1079,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     csr.io.csr_stall ||
     id_reg_pause ||
     io.traceStall
-  ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
+  }
+    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
 
   io.imem.req.valid := take_pc
   io.imem.req.bits.speculative := !take_pc_wb
@@ -1151,18 +1176,21 @@ if(coreParams.useVerif){
   io.verif.get.commit_prevPc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
   io.verif.get.commit_currPc := RegEnable(wb_npc.get,0.U,coreParams.useVerif.B)
   val reg_commit_order = RegInit(0.U((NRET*10).W))
-  when(wb_reg_valid&(coreParams.useVerif.B)){
-      reg_commit_order := reg_commit_order + 1.U
-  }
-  io.verif.get.commit_order := reg_commit_order
+//  when(wb_reg_valid&(coreParams.useVerif.B)){
+//      reg_commit_order := reg_commit_order + 1.U
+//  }
+//  io.verif.get.commit_order := reg_commit_order
+  io.verif.get.commit_order := 0.U
   io.verif.get.commit_insn := RegEnable(wb_reg_inst,0.U,coreParams.useVerif.B)
   io.verif.get.commit_fused := 0.U
 
   io.verif.get.sim_halt := 0.U
 
   io.verif.get.trap_valid := RegEnable(wb_xcpt,0.U,coreParams.useVerif.B)
-  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
-  io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
+//  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
+  io.verif.get.trap_pc := 0.U
+//  io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
+  io.verif.get.trap_firstInsn := 0.U
 
 
 //因为延迟了一个周期所以寄存器中的值是after commit
@@ -1493,7 +1521,7 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
      for(i<- 1 until n){
       memoryValues(i):= access(i.U)  
     }
-    Cat(memoryValues)
+    Cat(memoryValues.reverse)
   }
 }
 
