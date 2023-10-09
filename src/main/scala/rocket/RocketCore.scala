@@ -19,6 +19,8 @@ case class RocketCoreParams(
    * @Description: 使用envector改写父类usingvector
    */
   enVector: Boolean = false,
+  //wzw:使用enUVM覆写父类
+  enUVM: Boolean =false,
 
   bootFreqHz: BigInt = 0,
   useVM: Boolean = true,
@@ -81,6 +83,8 @@ case class RocketCoreParams(
    * @Description: 覆写useVector
    */  
   override val useVector: Boolean = enVector
+  //wzw:覆写useVerif
+  override val useVerif: Boolean = enUVM
 }
 
 trait HasRocketCoreParameters extends HasCoreParameters {
