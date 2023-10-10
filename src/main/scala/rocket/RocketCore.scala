@@ -863,7 +863,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   // val issue_vxsat = Wire(Bool())
   val zeroSignal=0.U(((xLen)-8).W)
   val zimm=Cat(zeroSignal,wb_reg_wdata(7,0))
-  issue_vconfig.vtype := VType.fromUInt(zimm,true)
+  issue_vconfig.vtype := VType.fromUInt(zimm,false)
   issue_vconfig.vl := VType.computeVL(wb_avl,zimm,csr.io.vector.get.vconfig.vl,wb_usecurrent,wb_usemax,wb_usezero)
   csr.io.vector.foreach { vio =>
     vio.set_vconfig.bits := issue_vconfig   

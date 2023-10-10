@@ -333,10 +333,19 @@ object VType {
   def fromUInt(that: UInt, ignore_vill: Boolean = false)(implicit p: Parameters): VType = {
     val res = 0.U.asTypeOf(new VType)
     val in = that.asTypeOf(res)
+    //第二个和三个条件能对应上，第一个有误
     val vill = (in.max_vsew.U < in.vsew) || !in.lmul_ok || in.reserved =/= 0.U || in.vill
+    //wzw添加otherwise条件 若是不符合时按照spike进行赋值
     when (!vill || ignore_vill.B) {
       res := in
       res.vsew := in.vsew(log2Ceil(1 + in.max_vsew) - 1, 0)
+    }.otherwise{
+      //res := 0.U
+      res.vma := 0.U
+      res.vta := 0.U
+      res.vsew := 0.U
+      res.vlmul_sign := 0.U
+      res.vlmul_mag := 0.U
     }
     res.reserved := 0.U
     res.vill := vill
