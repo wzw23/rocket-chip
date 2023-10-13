@@ -16,5 +16,9 @@ class DecodeIO(implicit p: Parameters) extends CoreBundle()(p) {
   val vsew = Output(Bits(3.W))
   val vlmul = Output(Bits(3.W))
   val stall_decode = Output(Bool())
-  val ready = Input(Bool())  
+  val ready = Input(Bool())
+  //
+  val lsu_resp_valid = Output(Bits(1.W))
+  val lsu_resp_excp = Output(Bits(1.W))
+  val id_resp_data = Output(Bits(xLen.W))
 }

@@ -730,7 +730,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ctrl_killm = killm_common || mem_xcpt || fpu_kill_mem
 
   // writeback stage
-  //wzw:add for commit stage,Set it to 0 for now and connect to the vpu interface later.,
+  //wzw:add for commit stage,Set it to 0 for now and connect to the vpu interface later.
   val v_decode_ready=WireDefault(true.B)
   val commit_vld = WireDefault(false.B)
   val return_data_vld = WireDefault(false.B)
@@ -744,10 +744,20 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //add exception and pc interface
   val vpu_pc = WireDefault(0.U)
   val vpu_mcause = WireDefault(0.U)
+  //
+  //wzw:add for decode stage,Set it to 0 for now and connect to the vpu interface later.
+  val vpu_lsu_req_valid = WireDefault(0.B)
+  val vpu_lsu_req_ld = WireDefault(0.B)
+  val vpu_lsu_req_addrs = WireDefault(0.U)
+  val vpu_lsu_req_data_width = WireDefault(0.U)
+  val vpu_lsu_st_req_data = WireDefault(0.U)
+  val vpu_lsu_waddr = WireDefault(UInt(xLen.W),0.U)
+  //wzw:自己添加，是否进行符号位扩展,可能需要扩展接口
+  val vpu_lsu_signed = WireDefault(0.U)
+  val vpu_rs0 = WireDefault(0.U)
 
 
-
-  wb_reg_valid := !ctrl_killm
+    wb_reg_valid := !ctrl_killm
     //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
@@ -802,6 +812,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ma.st, Causes.misaligned_store.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ma.ld, Causes.misaligned_load.U)
   ))
+   //wzw TODO:需要添加vpu dcache接口信号的传递
 
   val wbCoverCauses = List(
     (Causes.misaligned_store, "MISALIGNED_STORE"),
@@ -888,6 +899,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   io.decode_interface.vta := csr.io.vector.get.vconfig.vtype.vta
   io.decode_interface.vsew := csr.io.vector.get.vconfig.vtype.vsew
   io.decode_interface.vlmul := csr.io.vector.get.vconfig.vtype.vlmul_signed.asUInt
+  //
+  io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
+  io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
+  io.decode_interface.lsu_resp_excp := io.dmem.s2_xcpt.pf.st||io.dmem.s2_xcpt.pf.ld
+
+
 
   if (usingRoCC) {
     io.rocc.resp.ready := !wb_wxd
@@ -1018,6 +1035,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
   //wzw: 添加vpu设置scoreboard支持
+  // TODO:译码部分加入对id_wen的译码
   val sboard_waddr =Mux((id_set_sboard & id_wen), id_waddr,wb_waddr)
   sboard.set((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen), sboard_waddr)
 
@@ -1139,19 +1157,31 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   io.fpu.dmem_resp_tag := dmem_resp_waddr
   io.fpu.keep_clock_enabled := io.ptw.customCSRs.disableCoreClockGate
 
-  io.dmem.req.valid     := ex_reg_valid && ex_ctrl.mem
+  //wzw:添加dmem访问条件
+  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(vpu_lsu_req_valid)
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
+  //wzw:添加vpu_dcache_tag
+  val vpu_dcache_tag = Cat(vpu_lsu_waddr, 0.B)
   require(coreParams.dcacheReqTagBits >= ex_dcache_tag.getWidth)
-  io.dmem.req.bits.tag  := ex_dcache_tag
-  io.dmem.req.bits.cmd  := ex_ctrl.mem_cmd
-  io.dmem.req.bits.size := ex_reg_mem_size
-  io.dmem.req.bits.signed := !Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14))
+  //require(coreParams.dcacheReqTagBits >= vpu_dcache_tag.getWidth)
+  //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
+  io.dmem.req.bits.tag  := Mux(vpu_lsu_req_valid,vpu_dcache_tag,ex_dcache_tag)
+  //wzw:添加vpu_mem_cmd
+  val vpu_mem_cmd = Mux(vpu_lsu_req_ld,M_XWR,M_XRD)
+  io.dmem.req.bits.cmd  := Mux(vpu_lsu_req_valid,vpu_mem_cmd,ex_ctrl.mem_cmd)
+  //wzw:ex_reg_mem_size代表写的大小
+  io.dmem.req.bits.size := Mux(vpu_lsu_req_valid,vpu_lsu_req_data_width,ex_reg_mem_size)
+  //signed代表是否扩展符号
+  io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
   io.dmem.req.bits.phys := false.B
-  io.dmem.req.bits.addr := encodeVirtualAddress(ex_rs(0), alu.io.adder_out)
+  io.dmem.req.bits.addr := Mux(vpu_lsu_req_valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
   io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)
-  io.dmem.req.bits.dprv := Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv)
-  io.dmem.req.bits.dv := ex_reg_hls || csr.io.status.dv
-  io.dmem.s1_data.data := (if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2))
+  io.dmem.req.bits.dprv := Mux(vpu_lsu_req_valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
+  io.dmem.req.bits.dv := Mux(vpu_lsu_req_valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
+  //vpu传过来的数据需要延迟一拍 传入dcache
+  val vpu_lsu_st_req_data_delay = RegEnable(vpu_lsu_st_req_data,0.U,vpu_lsu_req_valid)
+  io.dmem.s1_data.data := Mux(vpu_lsu_req_valid,vpu_lsu_st_req_data_delay ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+  //若是vpu出现异常的话是否添加冲刷指令?
   io.dmem.s1_kill := killm_common || mem_ldst_xcpt || fpu_kill_mem
   io.dmem.s2_kill := false.B
   // don't let D$ go to sleep if we're probably going to use it soon
