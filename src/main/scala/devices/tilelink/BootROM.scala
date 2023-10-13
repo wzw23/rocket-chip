@@ -14,10 +14,12 @@ import java.nio.ByteBuffer
 import java.nio.file.{Files, Paths}
 
 /** Size, location and contents of the boot rom. */
+//wzw:为了让rocket以spike的方式运行 修改了pc的起始地址 但是修改后存在错误
 case class BootROMParams(
   address: BigInt = 0x10000,
   size: Int = 0x10000,
   hang: BigInt = 0x10040, // The hang parameter is used as the power-on reset vector
+//  hang: BigInt = 0x10000, // The hang parameter is used as the power-on reset vector
   contentFileName: String)
 
 class TLROM(val base: BigInt, val size: Int, contentsDelayed: => Seq[Byte], executable: Boolean = true, beatBytes: Int = 4,

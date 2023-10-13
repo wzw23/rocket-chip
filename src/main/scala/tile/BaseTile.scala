@@ -53,6 +53,13 @@ trait HasNonDiplomaticTileParameters {
   def usingDataScratchpad: Boolean = tileParams.dcache.flatMap(_.scratch).isDefined
 
   def xLen: Int = p(XLen)
+  /**
+   * @Editors: wuzewei
+   * @Description: 添加NRET和NTRAP以适配vset接口添加
+   */
+  def NRET: Int = 1 
+  def NTRAP: Int = 1
+
   def xBytes: Int = xLen / 8
   def iLen: Int = 32
   def pgIdxBits: Int = 12
@@ -93,7 +100,12 @@ trait HasNonDiplomaticTileParameters {
 
   // TODO make HellaCacheIO diplomatic and remove this brittle collection of hacks
   //                  Core   PTW                DTIM                    coprocessors           
-  def dcacheArbPorts = 1 + usingVM.toInt + usingDataScratchpad.toInt + p(BuildRoCC).size + tileParams.core.useVector.toInt
+  /**
+   * @Editors: wuzewei
+   * @Description: change to use vector
+   */
+  // def dcacheArbPorts = 1 + usingVM.toInt + usingDataScratchpad.toInt + p(BuildRoCC).size + tileParams.core.useVector.toInt
+  def dcacheArbPorts = 1 + usingVM.toInt + usingDataScratchpad.toInt + p(BuildRoCC).size //+ tileParams.core.useVector.toInt
 
   // TODO merge with isaString in CSR.scala
   def isaDTS: String = {
