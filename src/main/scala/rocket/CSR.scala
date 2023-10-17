@@ -755,6 +755,9 @@ class CSRFile(
     read_sstatus.spie := io.status.spie
     read_sstatus.sie := io.status.sie
 
+    //wzw:添加sstatus接口
+    io.sstatus.get := (read_sstatus.asUInt)(xLen - 1, 0)
+
     read_mapping += CSRs.sstatus -> (read_sstatus.asUInt)(xLen-1,0)
     read_mapping += CSRs.sip -> read_sip.asUInt
     read_mapping += CSRs.sie -> read_sie.asUInt
