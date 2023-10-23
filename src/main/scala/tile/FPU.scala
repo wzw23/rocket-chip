@@ -802,11 +802,11 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
    * @Description: add for verification
    */
   if(coreParams.useVerif){
-  val memoryValues = Wire(Vec(32,UInt((fLen+1).W)))
+  val memoryValues = Wire(Vec(32,UInt((fLen).W)))
   for(i<-0 until 32){
-    memoryValues(i):= regfile(i)
+    memoryValues(i):= ieee(regfile(i))(fLen-1,0)
   }
-  io.fpu_ver_reg.get := Cat(memoryValues)
+  io.fpu_ver_reg.get := Cat(memoryValues.reverse)
 }
   when (load_wb) {
     val wdata = recode(load_wb_data, load_wb_typeTag)

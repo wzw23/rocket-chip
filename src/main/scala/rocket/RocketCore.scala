@@ -1289,10 +1289,14 @@ if(coreParams.useVerif){
   io.verif.get.csr_scauseWr := csr.io.scause.get
   io.verif.get.csr_satpWr := csr.io.satp.get
   io.verif.get.csr_sscratchWr := csr.io.sscratch.get
-  io.verif.get.csr_vtypeWr := csr.io.vtype.get
-  io.verif.get.csr_vcsrWr := csr.io.vcsr.get
+  //先将vtype vcsr vstart设置为0
+  //io.verif.get.csr_vtypeWr := csr.io.vtype.get
+  io.verif.get.csr_vtypeWr := 0.U
+  //io.verif.get.csr_vcsrWr := csr.io.vcsr.get
+  io.verif.get.csr_vcsrWr := 0.U
   io.verif.get.csr_vlWr := csr.io.vl.get
-  io.verif.get.csr_vstartWr := csr.io.vstart.get
+  //io.verif.get.csr_vstartWr := csr.io.vstart.get
+  io.verif.get.csr_vstartWr := 0.U
 
   //TODO: open later now set to 0
   /*

@@ -999,7 +999,7 @@ class CSRFile(
    * @Description: add for verification
    */
   if(coreParams.useVerif){
-  io.mepc.get := formEPC(wdata)
+  io.mepc.get := readEPC(reg_mepc).sextTo(xLen)
   io.mtval.get := reg_mtval.sextTo(xLen)
   io.mtvec.get := read_mtvec
   io.mcause.get := reg_mcause
