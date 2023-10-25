@@ -755,6 +755,9 @@ class CSRFile(
     read_sstatus.spie := io.status.spie
     read_sstatus.sie := io.status.sie
 
+    //wzw:添加sstatus接口
+    io.sstatus.get := (read_sstatus.asUInt)(xLen - 1, 0)
+
     read_mapping += CSRs.sstatus -> (read_sstatus.asUInt)(xLen-1,0)
     read_mapping += CSRs.sip -> read_sip.asUInt
     read_mapping += CSRs.sie -> read_sie.asUInt
@@ -996,7 +999,7 @@ class CSRFile(
    * @Description: add for verification
    */
   if(coreParams.useVerif){
-  io.mepc.get := formEPC(wdata)
+  io.mepc.get := readEPC(reg_mepc).sextTo(xLen)
   io.mtval.get := reg_mtval.sextTo(xLen)
   io.mtvec.get := read_mtvec
   io.mcause.get := reg_mcause
