@@ -7,3 +7,7 @@
 [submodule "cde"]
 	path = cde
 	url = https://github.com/chipsalliance/cde.git
+[submodule "riscv-vector"]
+	path = riscv-vector
+	url = https://github.com/IntelLabs/riscv-vector
+	branch = rocketvector

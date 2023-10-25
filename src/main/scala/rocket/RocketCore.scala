@@ -1215,7 +1215,7 @@ if(coreParams.useVerif){
 //  }
 //  io.verif.get.commit_order := reg_commit_order
   io.verif.get.commit_order := 0.U
-  io.verif.get.commit_insn := RegEnable(wb_reg_inst,0.U,coreParams.useVerif.B)
+  io.verif.get.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst),0.U,coreParams.useVerif.B)
   io.verif.get.commit_fused := 0.U
 
   io.verif.get.sim_halt := 0.U
