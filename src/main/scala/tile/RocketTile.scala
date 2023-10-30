@@ -13,6 +13,8 @@ import freechips.rocketchip.rocket._
 import freechips.rocketchip.subsystem.TileCrossingParamsLike
 import freechips.rocketchip.util._
 import freechips.rocketchip.prci.{ClockSinkParameters}
+//wzw add vpu
+import smartVector._
 
 case class RocketTileBoundaryBufferParams(force: Boolean = false)
 
@@ -159,6 +161,11 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   // Connect the core pipeline to other intra-tile modules
   outer.frontend.module.io.cpu <> core.io.imem
   dcachePorts += core.io.dmem // TODO outer.dcachePorts += () => module.core.io.dmem ??
+  //add vpu
+  val vpu = Module(new SmartVector())
+  vpu.io.in <> core.io.vpu_in
+  core.io.vpu_out <> vpu.io.out
+
   fpuOpt foreach { fpu => core.io.fpu <> fpu.io }
   core.io.ptw <> ptw.io.dpath
 

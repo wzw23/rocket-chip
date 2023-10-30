@@ -7,6 +7,8 @@ import Chisel._
 import org.chipsalliance.cde.config._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.util._
+//wzw add smartVector
+import smartVector._
 
 case object XLen extends Field[Int]
 case object MaxHartIdBits extends Field[Int]
@@ -157,7 +159,7 @@ trait HasCoreParameters extends HasTileParameters {
    * @Description: 用来开启trace 方便查看
    */
   //usetrace trace总开关
-  val opentrace = true
+  val opentrace = false
   //vtrace 副开关
   val openvtrace = true
   val usevtrace = if(opentrace & openvtrace) true else false
@@ -204,5 +206,8 @@ trait HasCoreIO extends HasTileParameters {
      * @Description: add for verification
      */
     val verif = coreParams.useVerif.option(new VERIO)
+    //wzw:add vpu interface
+    val vpu_in = Decoupled(new RVUissue)
+    val vpu_out = Flipped(new RVUTestResult)
   }
 }

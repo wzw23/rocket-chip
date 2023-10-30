@@ -12,6 +12,8 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
 import scala.collection.mutable.ArrayBuffer
+//wzw:add smartVector
+import smartVector._
 
 case class RocketCoreParams(
    /**
@@ -888,18 +890,31 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     }
 
   //加decode接口，jyf
-  dontTouch(io.decode_interface)
-  io.decode_interface.instr := id_inst(0)   
-  io.decode_interface.rs1 := ex_rs(0)
-  io.decode_interface.rs2 := ex_rs(1)
-  io.decode_interface.valid := !ctrl_killd && id_ctrl.vector
-  io.decode_interface.vl := csr.io.vector.get.vconfig.vl
-  io.decode_interface.vstart := csr.io.vector.get.vstart
-  io.decode_interface.vma := csr.io.vector.get.vconfig.vtype.vma
-  io.decode_interface.vta := csr.io.vector.get.vconfig.vtype.vta
-  io.decode_interface.vsew := csr.io.vector.get.vconfig.vtype.vsew
-  io.decode_interface.vlmul := csr.io.vector.get.vconfig.vtype.vlmul_signed.asUInt
-  //
+//  dontTouch(io.decode_interface)
+//  io.decode_interface.instr := id_inst(0)
+//  io.decode_interface.rs1 := ex_rs(0)
+//  io.decode_interface.rs2 := ex_rs(1)
+//  io.decode_interface.valid := !ctrl_killd && id_ctrl.vector
+//  io.decode_interface.vl := csr.io.vector.get.vconfig.vl
+//  io.decode_interface.vstart := csr.io.vector.get.vstart
+//  io.decode_interface.vma := csr.io.vector.get.vconfig.vtype.vma
+//  io.decode_interface.vta := csr.io.vector.get.vconfig.vtype.vta
+//  io.decode_interface.vsew := csr.io.vector.get.vconfig.vtype.vsew
+//  io.decode_interface.vlmul := csr.io.vector.get.vconfig.vtype.vlmul_signed.asUInt
+  //wzw:change vpu decode interface
+  io.vpu_in.valid := ex_reg_valid && id_ctrl.vector
+  io.vpu_in.bits.inst := ex_reg_inst
+  io.vpu_in.bits.rs1 := ex_rs(0)
+  io.vpu_in.bits.rs2 := ex_rs(1)
+  io.vpu_in.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
+  io.vpu_in.bits.vInfo.vstart := csr.io.vector.get.vstart
+  io.vpu_in.bits.vInfo.vma := csr.io.vector.get.vconfig.vtype.vma
+  io.vpu_in.bits.vInfo.vta := csr.io.vector.get.vconfig.vtype.vta
+  io.vpu_in.bits.vInfo.vsew := csr.io.vector.get.vconfig.vtype.vsew
+  io.vpu_in.bits.vInfo.vlmul := Cat(csr.io.vector.get.vconfig.vtype.vlmul_sign,csr.io.vector.get.vconfig.vtype.vlmul_mag)
+  io.vpu_in.bits.vInfo.vxrm := csr.io.vector.get.vxrm
+  io.vpu_in.bits.vInfo.frm := csr.io.fcsr_rm
+    //
   io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
   io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
   io.decode_interface.lsu_resp_excp := io.dmem.s2_xcpt.pf.st||io.dmem.s2_xcpt.pf.ld
@@ -917,7 +932,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }
   //wzw:写回阶段的接口
   if(usingVector){
-    when(commit_vld){
+    when(io.vpu_out.commit_vld){
       ll_wdata := return_data
       ll_wen := return_data_vld
       ll_waddr := retrun_reg_idx
@@ -1082,13 +1097,16 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
   //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
   val table = RegInit(0.U(4.W))
-  when(io.decode_interface.valid&v_decode_ready) {table := table + 1.U}
-  when(commit_vld) {table := table - 1.U}
-  val isvectorrun = table =/= 0.U
+  when(io.vpu_in.fire) {table := table + 1.U}
+  when(io.vpu_out.commit_vld) {table := table - 1.U}
+  val isvectorrun = ((table===0.U) && io.vpu_in.fire)||(table =/= 0.U)
+  dontTouch(isvectorrun)
+  //wzw add vpu_stall
+  //val vpu_stall_id =
 
   val ctrl_stalld = {
     //jyf:add stall logic
-    (id_ctrl.vector&&(!v_decode_ready))||(isvectorrun && !id_ctrl.vector)||
+   // (id_ctrl.vector&&(!v_decode_ready))||(isvectorrun && !id_ctrl.vector)||
     id_ex_hazard || id_mem_hazard || id_wb_hazard || id_sboard_hazard ||
     csr.io.singleStep && (ex_reg_valid || mem_reg_valid || wb_reg_valid) ||
     id_csr_en && csr.io.decode(0).fp_csr && !io.fpu.fcsr_rdy ||
@@ -1096,6 +1114,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_ctrl.mem && dcache_blocked || // reduce activity during D$ misses
     id_ctrl.rocc && rocc_blocked || // reduce activity while RoCC is busy
     id_ctrl.div && (!(div.io.req.ready || (div.io.resp.valid && !wb_wxd)) || div.io.req.valid) || // reduce odds of replay
+    //wzw:change stall logic,because rocket will issue in ex stage
+    //(id_ctrl.vector &&(!(io.vpu_in.ready)))||(isvectorrun && !id_ctrl.vector)
     !clock_en ||
     id_do_fence ||
     csr.io.csr_stall ||
