@@ -902,18 +902,18 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 //  io.decode_interface.vsew := csr.io.vector.get.vconfig.vtype.vsew
 //  io.decode_interface.vlmul := csr.io.vector.get.vconfig.vtype.vlmul_signed.asUInt
   //wzw:change vpu decode interface
-  io.vpu_in.valid := ex_reg_valid && id_ctrl.vector
-  io.vpu_in.bits.inst := ex_reg_inst
-  io.vpu_in.bits.rs1 := ex_rs(0)
-  io.vpu_in.bits.rs2 := ex_rs(1)
-  io.vpu_in.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
-  io.vpu_in.bits.vInfo.vstart := csr.io.vector.get.vstart
-  io.vpu_in.bits.vInfo.vma := csr.io.vector.get.vconfig.vtype.vma
-  io.vpu_in.bits.vInfo.vta := csr.io.vector.get.vconfig.vtype.vta
-  io.vpu_in.bits.vInfo.vsew := csr.io.vector.get.vconfig.vtype.vsew
-  io.vpu_in.bits.vInfo.vlmul := Cat(csr.io.vector.get.vconfig.vtype.vlmul_sign,csr.io.vector.get.vconfig.vtype.vlmul_mag)
-  io.vpu_in.bits.vInfo.vxrm := csr.io.vector.get.vxrm
-  io.vpu_in.bits.vInfo.frm := csr.io.fcsr_rm
+  io.vpu_issue.valid := ex_reg_valid && ex_ctrl.vector
+  io.vpu_issue.bits.inst := ex_reg_inst
+  io.vpu_issue.bits.rs1 := ex_rs(0)
+  io.vpu_issue.bits.rs2 := ex_rs(1)
+  io.vpu_issue.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
+  io.vpu_issue.bits.vInfo.vstart := csr.io.vector.get.vstart
+  io.vpu_issue.bits.vInfo.vma := csr.io.vector.get.vconfig.vtype.vma
+  io.vpu_issue.bits.vInfo.vta := csr.io.vector.get.vconfig.vtype.vta
+  io.vpu_issue.bits.vInfo.vsew := csr.io.vector.get.vconfig.vtype.vsew
+  io.vpu_issue.bits.vInfo.vlmul := Cat(csr.io.vector.get.vconfig.vtype.vlmul_sign,csr.io.vector.get.vconfig.vtype.vlmul_mag)
+  io.vpu_issue.bits.vInfo.vxrm := csr.io.vector.get.vxrm
+  io.vpu_issue.bits.vInfo.frm := csr.io.fcsr_rm
     //
   io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
   io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
@@ -932,7 +932,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }
   //wzw:写回阶段的接口
   if(usingVector){
-    when(io.vpu_out.commit_vld){
+    when(io.vpu_commit.commit_vld){
       ll_wdata := return_data
       ll_wen := return_data_vld
       ll_waddr := retrun_reg_idx
@@ -948,7 +948,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   val wb_wen = wb_valid && wb_ctrl.wxd
   //wzw 防止vpu可能产生的写后读问题
-  val id_wen = (!ctrl_killd) & wb_ctrl.wxd
+  val id_wen = (!ctrl_killd) & id_ctrl.wxd
   val rf_wen = wb_wen || ll_wen
   val rf_waddr = Mux(ll_wen, ll_waddr, wb_waddr)
   val rf_wdata = Mux(dmem_resp_valid && dmem_resp_xpu, io.dmem.resp.bits.data(xLen-1, 0),
@@ -1051,8 +1051,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
   //wzw: 添加vpu设置scoreboard支持
   // TODO:译码部分加入对id_wen的译码
-  val sboard_waddr =Mux((id_set_sboard & id_wen), id_waddr,wb_waddr)
-  sboard.set((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen), sboard_waddr)
+  val sboard_waddr =Mux((id_set_sboard & id_wen & (!ctrl_killd)), id_waddr,wb_waddr)
+  sboard.set((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen ), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined
@@ -1097,10 +1097,11 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
   //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
   val table = RegInit(0.U(4.W))
-  when(io.vpu_in.fire) {table := table + 1.U}
-  when(io.vpu_out.commit_vld) {table := table - 1.U}
-  val isvectorrun = ((table===0.U) && io.vpu_in.fire)||(table =/= 0.U)
-  dontTouch(isvectorrun)
+  when(io.vpu_issue.fire&io.vpu_commit.commit_vld){
+    table := table;
+  }.elsewhen(io.vpu_issue.fire) {table := table + 1.U}
+  .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
+  val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
   //wzw add vpu_stall
   //val vpu_stall_id =
 
@@ -1115,7 +1116,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_ctrl.rocc && rocc_blocked || // reduce activity while RoCC is busy
     id_ctrl.div && (!(div.io.req.ready || (div.io.resp.valid && !wb_wxd)) || div.io.req.valid) || // reduce odds of replay
     //wzw:change stall logic,because rocket will issue in ex stage
-    //(id_ctrl.vector &&(!(io.vpu_in.ready)))||(isvectorrun && !id_ctrl.vector)
+    (id_ctrl.vector &&(!(io.vpu_issue.ready)))||(isvectorrun && !id_ctrl.vector)||
     !clock_en ||
     id_do_fence ||
     csr.io.csr_stall ||

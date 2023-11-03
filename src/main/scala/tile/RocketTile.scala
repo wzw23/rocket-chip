@@ -163,8 +163,8 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   dcachePorts += core.io.dmem // TODO outer.dcachePorts += () => module.core.io.dmem ??
   //add vpu
   val vpu = Module(new SmartVector())
-  vpu.io.in <> core.io.vpu_in
-  core.io.vpu_out <> vpu.io.out
+  vpu.io.in <> core.io.vpu_issue
+  core.io.vpu_commit <> vpu.io.out.rvuCommit
 
   fpuOpt foreach { fpu => core.io.fpu <> fpu.io }
   core.io.ptw <> ptw.io.dpath

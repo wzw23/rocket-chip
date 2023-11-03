@@ -12,6 +12,7 @@ import xiangshan.MicroOp
 
 class UopAttribute extends Bundle {
     val ldest = UInt(5.W)
+    val scalarRegWriteEn = Bool()
 }
 
 class UopRegInfo extends Bundle {
@@ -31,8 +32,15 @@ class UopQueueOutput(implicit p : Parameters) extends Bundle {
 
 class UopQueue(implicit p : Parameters) extends Module {
     val io = IO(new Bundle{
-        val in = Flipped(Decoupled(new VDecodeOutput))
-        val out = ValidIO(new UopQueueOutput)
+        val in = new Bundle{
+            val decodeIn  = Flipped(Decoupled(new VDecodeOutput))
+            val regFileIn = Input(new regOut)
+        }
+        val out = new Bundle{
+            val mUop        = ValidIO(new UopQueueOutput)
+            val toRegFile   = Output(new regReadIn)
+            val mUopRegAttr = Output(new MUopRegAttr)
+        } 
     })
     
     val vCtrl         = Reg(Vec(1, new darecreek.VCtrl))
@@ -46,95 +54,197 @@ class UopQueue(implicit p : Parameters) extends Module {
     val currentState = RegInit(empty)
     val currentStateNext = WireDefault(empty) 
 
-    when (currentState === empty && io.in.valid){       
-        vCtrl(0)                 := io.in.bits.vCtrl
-        vInfo(0)                 := io.in.bits.vInfo
-        scalar_opnd_1(0)         := io.in.bits.scalar_opnd_1
-        scalar_opnd_2(0)         := io.in.bits.scalar_opnd_2
+    when (currentState === empty && io.in.decodeIn.valid){       
+        vCtrl(0)                 := io.in.decodeIn.bits.vCtrl
+        vInfo(0)                 := io.in.decodeIn.bits.vInfo
+        scalar_opnd_1(0)         := io.in.decodeIn.bits.scalar_opnd_1
+        scalar_opnd_2(0)         := io.in.decodeIn.bits.scalar_opnd_2
 
-        //vmv do not need the reg file read data, so set it to 0 
-        uopRegInfo(0).vs1        := 0.U
-        uopRegInfo(0).vs2        := 0.U
+        //To save power, when do not need to update the vs1, keep it unchanged. 
+        //ALU will judge whether use the data, do not worry to send the wrong data 
+        //uopRegInfo(0).vs1        := Mux(io.in.regFileIn.readVld(0), io.in.regFileIn.readData(0), uopRegInfo(0).vs1)
+        //uopRegInfo(0).vs2        := Mux(io.in.regFileIn.readVld(1), io.in.regFileIn.readData(1), uopRegInfo(0).vs2)
 
-        uopRegInfo(0).rfWriteEn  := io.in.bits.toReg.bits.rfWriteEn
-        uopRegInfo(0).vxsat      := io.in.bits.toReg.bits.vxsat
+        uopRegInfo(0).rfWriteEn  := io.in.decodeIn.bits.vCtrl.ldestVal
+        uopRegInfo(0).vxsat      := false.B
     } 
 
-    when (currentState === empty && io.in.valid){
-        io.out.valid := true.B       
-        io.out.bits.uop.uopIdx := idx
-        io.out.bits.uop.uopEnd := (idx + 1.U === io.in.bits.vInfo.vlmul)
-
-        io.out.bits.uop.ctrl.funct6      := io.in.bits.vCtrl.funct6
-        io.out.bits.uop.ctrl.funct3      := io.in.bits.vCtrl.funct3
-        io.out.bits.uop.ctrl.vm          := io.in.bits.vCtrl.vm
-        io.out.bits.uop.ctrl.vs1_imm     := io.in.bits.vCtrl.lsrc(0)
-        io.out.bits.uop.ctrl.widen       := io.in.bits.vCtrl.widen
-        io.out.bits.uop.ctrl.widen2      := io.in.bits.vCtrl.widen2
-        io.out.bits.uop.ctrl.narrow      := io.in.bits.vCtrl.narrow
-        io.out.bits.uop.ctrl.narrow_to_1 := io.in.bits.vCtrl.narrow_to_1
+    val ctrl = io.in.decodeIn.bits.vCtrl
+    val info = io.in.decodeIn.bits.vInfo
+    val v_ext_out = ctrl.alu && ctrl.funct3 === "b010".U && ctrl.funct6 === "b010010".U 
         
-        io.out.bits.uop.info.ma          := io.in.bits.vInfo.vma
-        io.out.bits.uop.info.ta          := io.in.bits.vInfo.vta
-        io.out.bits.uop.info.vl          := io.in.bits.vInfo.vl
-        io.out.bits.uop.info.vstart      := io.in.bits.vInfo.vstart
-        io.out.bits.uop.info.vsew        := io.in.bits.vInfo.vsew
-        io.out.bits.uop.info.vlmul       := io.in.bits.vInfo.vlmul
-        io.out.bits.uop.info.vxrm        := io.in.bits.vInfo.vxrm
-        io.out.bits.uop.info.frm         := io.in.bits.vInfo.frm
-        io.out.bits.uop.sysUop           := 0.U.asTypeOf(new MicroOp)
-
-        io.out.bits.scalar_opnd_1        := io.in.bits.scalar_opnd_1
-        io.out.bits.scalar_opnd_2        := io.in.bits.scalar_opnd_2
-
-        io.out.bits.uopAttribute.ldest   := io.in.bits.vCtrl.ldest
-
-        io.out.bits.uopRegInfo.rfWriteEn := io.in.bits.toReg.bits.rfWriteEn
-        io.out.bits.uopRegInfo.vxsat     := io.in.bits.toReg.bits.vxsat
-        io.out.bits.uopRegInfo.vs1       := 0.U
-        io.out.bits.uopRegInfo.vs2       := 0.U
-        idx := idx + 1.U
-    }.elsewhen(currentState === ongoing){
-        io.out.valid := true.B       
-        io.out.bits.uop.uopIdx := idx
-        io.out.bits.uop.uopEnd := (idx + 1.U === vInfo(0).vlmul)
-
-        io.out.bits.uop.ctrl.funct6      := vCtrl(0).funct6
-        io.out.bits.uop.ctrl.funct3      := vCtrl(0).funct3
-        io.out.bits.uop.ctrl.vm          := vCtrl(0).vm
-        io.out.bits.uop.ctrl.vs1_imm     := vCtrl(0).lsrc(0)
-        io.out.bits.uop.ctrl.widen       := vCtrl(0).widen
-        io.out.bits.uop.ctrl.widen2      := vCtrl(0).widen2
-        io.out.bits.uop.ctrl.narrow      := vCtrl(0).narrow
-        io.out.bits.uop.ctrl.narrow_to_1 := vCtrl(0).narrow_to_1
-        
-        io.out.bits.uop.info.ma          := vInfo(0).vma
-        io.out.bits.uop.info.ta          := vInfo(0).vta
-        io.out.bits.uop.info.vl          := vInfo(0).vl
-        io.out.bits.uop.info.vstart      := vInfo(0).vstart
-        io.out.bits.uop.info.vsew        := vInfo(0).vsew
-        io.out.bits.uop.info.vlmul       := vInfo(0).vlmul
-        io.out.bits.uop.info.vxrm        := vInfo(0).vxrm
-        io.out.bits.uop.info.frm         := vInfo(0).frm
-        io.out.bits.uop.sysUop           := 0.U.asTypeOf(new MicroOp)
-
-        io.out.bits.scalar_opnd_1        := scalar_opnd_1(0)
-        io.out.bits.scalar_opnd_2        := scalar_opnd_2(0)
-
-        io.out.bits.uopAttribute.ldest   := vCtrl(0).ldest
-
-        io.out.bits.uopRegInfo           := uopRegInfo(0)
-        idx := idx + 1.U
-    }.otherwise{
-        io.out.valid := false.B
-        io.out.bits := 0.U.asTypeOf(new UopQueueOutput)
+    val lsrc1_inc = Wire(UInt(3.W))
+    when (ctrl.widen || v_ext_out && ctrl.lsrc(0)(2,1) === 3.U) {
+      lsrc1_inc := idx >> 1
+    }.elsewhen (v_ext_out && ctrl.lsrc(0)(2,1) === 2.U) {
+      lsrc1_inc := idx >> 2
+    }.elsewhen (v_ext_out && ctrl.lsrc(0)(2,1) === 1.U) {
+      lsrc1_inc := idx >> 3
+    }.elsewhen (ctrl.funct6 === "b010100".U) { //VMUNARY0
+      lsrc1_inc := 0.U
+    }.otherwise {
+      lsrc1_inc := idx
     }
 
-    when (currentState === empty && io.in.valid && io.in.bits.vInfo.vlmul === 1.U){
+    val lsrc0_inc =             //vcompress
+          Mux(ctrl.redu || (ctrl.funct6 === "b010111".U && ctrl.funct3 === 2.U), 0.U, 
+          Mux(ctrl.widen || ctrl.widen2 || ctrl.narrow, idx >> 1, idx))
+
+    val ldest_inc = Wire(UInt(3.W))
+    //ToDo: add ldst idex inc
+    //when (ldstCtrlReg(i).indexed && ctrl.isLdst) {
+    //  ldest_inc := sewSide_inc
+    when (ctrl.narrow) {
+      ldest_inc := idx >> 1
+    }.elsewhen (ctrl.redu || ctrl.narrow_to_1) {
+      ldest_inc := 0.U
+    }.otherwise {
+      ldest_inc := idx
+    }
+
+    //object Vlmul_to_lmul {
+    //// vlmul --> LMUL --> max(LMUL, 1)
+    //// Note: set result to 1 if LMUL < 1
+    //    def apply(vlmul: UInt): UInt = {
+    //        val y0 = !vlmul(1) && !vlmul(0) || vlmul(2)
+    //        val y1 = !vlmul(2) && !vlmul(1) && vlmul(0)
+    //        val y2 = !vlmul(2) && vlmul(1) && !vlmul(0)
+    //        val y3 = !vlmul(2) && vlmul(1) && vlmul(0)
+    //        Cat(y3, y2, y1, y0)
+    //    }
+    //}
+//
+    //val expdLen = Wire(UInt(4.W))
+    ////val lmul = Vlmul_to_lmul(info.vlmul)
+    //val lmul = info.vlmul
+    //when (ctrl.widen || ctrl.widen2 || ctrl.narrow) {
+    //  expdLen := Mux(info.vlmul(2), 1.U, lmul << 1)  // If lmul < 1, expdLen = 1 for widen/narrow
+    //}.elsewhen (ctrl.funct6 === "b100111".U && ctrl.funct3 === "b011".U) {//Whole register move
+    //  expdLen := ctrl.lsrc(0)(2, 0) +& 1.U
+    //}.otherwise {
+    //  expdLen := lmul
+    //}
+    //io.out.mUopRegAttr.expdLen := expdLen
+    ////
+
+    //ToDo: redu, widen2,narrow_to_1 need to be add
+    val regBackWidth = UInt(3.W)
+    when(ctrl.widen) {
+        io.out.mUopRegAttr.regBackWidth := "b111".U
+        io.out.mUopRegAttr.regWriteMuopIdx  := 0.U
+    }.elsewhen(ctrl.narrow) {
+        io.out.mUopRegAttr.regBackWidth := "b11".U
+        io.out.mUopRegAttr.regWriteMuopIdx  := idx(0)
+    }.otherwise{
+        io.out.mUopRegAttr.regBackWidth := "b111".U
+        io.out.mUopRegAttr.regWriteMuopIdx  := 0.U       
+    }
+
+    when (currentState === empty && io.in.decodeIn.valid){
+
+        io.out.toRegFile.rfReadEn(0)  := io.in.decodeIn.bits.vCtrl.lsrcVal(0)
+        io.out.toRegFile.rfReadEn(1)  := io.in.decodeIn.bits.vCtrl.lsrcVal(1)
+        io.out.toRegFile.rfReadIdx(0) := io.in.decodeIn.bits.vCtrl.lsrc(0) + lsrc0_inc
+        io.out.toRegFile.rfReadIdx(1) := io.in.decodeIn.bits.vCtrl.lsrc(1) + lsrc1_inc
+        //io.out.toRegFile.bits.rfWriteEn    := false.B
+        //io.out.toRegFile.bits.rfWriteIdx   := DontCare
+        //io.out.toRegFile.bits.rfWriteData  := DontCare
+        //io.out.toRegFile.vxsat        := false.B
+        //io.out.toRegFile.valid             := io.out.toRegFile.bits.rfReadEn.reduce(_ || _)
+
+        io.out.mUop.valid := true.B       
+        io.out.mUop.bits.uop.uopIdx := idx
+        io.out.mUop.bits.uop.uopEnd := (idx + 1.U === io.in.decodeIn.bits.vInfo.vlmul)
+
+        io.out.mUop.bits.uop.ctrl.funct6      := io.in.decodeIn.bits.vCtrl.funct6
+        io.out.mUop.bits.uop.ctrl.funct3      := io.in.decodeIn.bits.vCtrl.funct3
+        io.out.mUop.bits.uop.ctrl.vm          := io.in.decodeIn.bits.vCtrl.vm
+        io.out.mUop.bits.uop.ctrl.vs1_imm     := io.in.decodeIn.bits.vCtrl.lsrc(0)
+        io.out.mUop.bits.uop.ctrl.widen       := io.in.decodeIn.bits.vCtrl.widen
+        io.out.mUop.bits.uop.ctrl.widen2      := io.in.decodeIn.bits.vCtrl.widen2
+        io.out.mUop.bits.uop.ctrl.narrow      := io.in.decodeIn.bits.vCtrl.narrow
+        io.out.mUop.bits.uop.ctrl.narrow_to_1 := io.in.decodeIn.bits.vCtrl.narrow_to_1
+      
+        io.out.mUop.bits.uop.info.ma          := io.in.decodeIn.bits.vInfo.vma
+        io.out.mUop.bits.uop.info.ta          := io.in.decodeIn.bits.vInfo.vta
+        io.out.mUop.bits.uop.info.vl          := io.in.decodeIn.bits.vInfo.vl
+        io.out.mUop.bits.uop.info.vstart      := io.in.decodeIn.bits.vInfo.vstart
+        io.out.mUop.bits.uop.info.vsew        := io.in.decodeIn.bits.vInfo.vsew
+        io.out.mUop.bits.uop.info.vlmul       := io.in.decodeIn.bits.vInfo.vlmul
+        io.out.mUop.bits.uop.info.vxrm        := io.in.decodeIn.bits.vInfo.vxrm
+        io.out.mUop.bits.uop.info.frm         := io.in.decodeIn.bits.vInfo.frm
+        io.out.mUop.bits.uop.sysUop           := 0.U.asTypeOf(new MicroOp)
+
+        io.out.mUop.bits.scalar_opnd_1        := io.in.decodeIn.bits.scalar_opnd_1
+        io.out.mUop.bits.scalar_opnd_2        := io.in.decodeIn.bits.scalar_opnd_2
+
+        io.out.mUop.bits.uopAttribute.scalarRegWriteEn := io.in.decodeIn.bits.vCtrl.rdVal
+        //TODO: different inst type has different methods.
+        //TODO: when is widen, the ldest = ldest + idx
+        //TODO: when is narrow, two adjacent has same idx
+        io.out.mUop.bits.uopAttribute.ldest            := io.in.decodeIn.bits.vCtrl.ldest + ldest_inc
+
+        io.out.mUop.bits.uopRegInfo.rfWriteEn := io.in.decodeIn.bits.vCtrl.ldestVal
+        io.out.mUop.bits.uopRegInfo.vxsat     := false.B
+        io.out.mUop.bits.uopRegInfo.vs1       := io.in.regFileIn.readData(0)
+        io.out.mUop.bits.uopRegInfo.vs2       := io.in.regFileIn.readData(1)
+        idx := idx + 1.U
+    }.elsewhen(currentState === ongoing){
+        io.out.mUop.valid := true.B       
+        io.out.mUop.bits.uop.uopIdx := idx
+        io.out.mUop.bits.uop.uopEnd := (idx + 1.U === vInfo(0).vlmul)
+
+        io.out.mUop.bits.uop.ctrl.funct6      := vCtrl(0).funct6
+        io.out.mUop.bits.uop.ctrl.funct3      := vCtrl(0).funct3
+        io.out.mUop.bits.uop.ctrl.vm          := vCtrl(0).vm
+        io.out.mUop.bits.uop.ctrl.vs1_imm     := vCtrl(0).lsrc(0)
+        io.out.mUop.bits.uop.ctrl.widen       := vCtrl(0).widen
+        io.out.mUop.bits.uop.ctrl.widen2      := vCtrl(0).widen2
+        io.out.mUop.bits.uop.ctrl.narrow      := vCtrl(0).narrow
+        io.out.mUop.bits.uop.ctrl.narrow_to_1 := vCtrl(0).narrow_to_1
+       
+        io.out.mUop.bits.uop.info.ma          := vInfo(0).vma
+        io.out.mUop.bits.uop.info.ta          := vInfo(0).vta
+        io.out.mUop.bits.uop.info.vl          := vInfo(0).vl
+        io.out.mUop.bits.uop.info.vstart      := vInfo(0).vstart
+        io.out.mUop.bits.uop.info.vsew        := vInfo(0).vsew
+        io.out.mUop.bits.uop.info.vlmul       := vInfo(0).vlmul
+        io.out.mUop.bits.uop.info.vxrm        := vInfo(0).vxrm
+        io.out.mUop.bits.uop.info.frm         := vInfo(0).frm
+        io.out.mUop.bits.uop.sysUop           := 0.U.asTypeOf(new MicroOp)
+
+        io.out.mUop.bits.scalar_opnd_1        := scalar_opnd_1(0)
+        io.out.mUop.bits.scalar_opnd_2        := scalar_opnd_2(0)
+
+        io.out.mUop.bits.uopAttribute.scalarRegWriteEn := vCtrl(0).rdVal
+        //TODO: different inst type has different methods.
+        //TODO: when is widen, the ldest = ldest + idx
+        //TODO: when is narrow, two adjacent has same idx
+        io.out.mUop.bits.uopAttribute.ldest   := vCtrl(0).ldest + ldest_inc
+
+        io.out.mUop.bits.uopRegInfo.rfWriteEn := uopRegInfo(0).rfWriteEn
+        io.out.mUop.bits.uopRegInfo.vxsat     := false.B          
+        io.out.mUop.bits.uopRegInfo.vs1       := io.in.regFileIn.readData(0)
+        io.out.mUop.bits.uopRegInfo.vs2       := io.in.regFileIn.readData(1)
+
+        io.out.toRegFile.rfReadEn(0)          := vCtrl(0).lsrcVal(0)
+        io.out.toRegFile.rfReadEn(1)          := vCtrl(0).lsrcVal(1)
+        io.out.toRegFile.rfReadIdx(0)         := vCtrl(0).lsrc(0) + lsrc0_inc
+        io.out.toRegFile.rfReadIdx(1)         := vCtrl(0).lsrc(1) + lsrc1_inc
+
+        idx := idx + 1.U
+    }.otherwise{
+        io.out.mUop.valid := false.B
+        io.out.mUop.bits := 0.U.asTypeOf(new UopQueueOutput)
+        io.out.mUopRegAttr := 0.U.asTypeOf(new MUopRegAttr)
+        io.out.toRegFile := 0.U.asTypeOf(new regReadIn)
+    }
+
+    when (currentState === empty && io.in.decodeIn.valid && io.in.decodeIn.bits.vInfo.vlmul === 1.U){
         currentStateNext := empty
         idx := 0.U
     }
-    when (currentState === empty && io.in.valid && io.in.bits.vInfo.vlmul =/= 1.U){
+    when (currentState === empty && io.in.decodeIn.valid && io.in.decodeIn.bits.vInfo.vlmul =/= 1.U){
         currentStateNext := ongoing
     }
     when (currentState === ongoing && idx + 1.U === vInfo(0).vlmul){
@@ -145,7 +255,7 @@ class UopQueue(implicit p : Parameters) extends Module {
     }
     currentState := currentStateNext
 
-    io.in.ready := (currentStateNext === empty)
+    io.in.decodeIn.ready := (currentStateNext === empty)
 
     //assert(io.in.valid && currentState === ongoing, "when has ongoing inst, can not accept a new one")
 
