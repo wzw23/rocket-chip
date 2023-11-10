@@ -15,6 +15,7 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.prci.{ClockSinkParameters}
 //wzw add vpu
 import smartVector._
+import chisel3.{dontTouch}
 
 case class RocketTileBoundaryBufferParams(force: Boolean = false)
 
@@ -161,10 +162,11 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   // Connect the core pipeline to other intra-tile modules
   outer.frontend.module.io.cpu <> core.io.imem
   dcachePorts += core.io.dmem // TODO outer.dcachePorts += () => module.core.io.dmem ??
-  //add vpu
+  //wzw:add vpu
   val vpu = Module(new SmartVector())
   vpu.io.in <> core.io.vpu_issue
   core.io.vpu_commit <> vpu.io.out.rvuCommit
+  dontTouch(core.io.vpu_issue)
 
   fpuOpt foreach { fpu => core.io.fpu <> fpu.io }
   core.io.ptw <> ptw.io.dpath

@@ -914,7 +914,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   io.vpu_issue.bits.vInfo.vlmul := Cat(csr.io.vector.get.vconfig.vtype.vlmul_sign,csr.io.vector.get.vconfig.vtype.vlmul_mag)
   io.vpu_issue.bits.vInfo.vxrm := csr.io.vector.get.vxrm
   io.vpu_issue.bits.vInfo.frm := csr.io.fcsr_rm
-    //
+  dontTouch(io.vpu_issue);
+  dontTouch(io.vpu_commit);
+
   io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
   io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
   io.decode_interface.lsu_resp_excp := io.dmem.s2_xcpt.pf.st||io.dmem.s2_xcpt.pf.ld
@@ -1117,6 +1119,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_ctrl.div && (!(div.io.req.ready || (div.io.resp.valid && !wb_wxd)) || div.io.req.valid) || // reduce odds of replay
     //wzw:change stall logic,because rocket will issue in ex stage
     (id_ctrl.vector &&(!(io.vpu_issue.ready)))||(isvectorrun && !id_ctrl.vector)||
+    //wzw:如果此条指令是vector指令且之前有更改csr寄存器的指令的话，将会stall住流水线
+   // (ex_reg_valid || mem_reg_valid || wb_reg_valid)||
     !clock_en ||
     id_do_fence ||
     csr.io.csr_stall ||
@@ -1225,37 +1229,39 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: verif接口
    */
   //有的信号延迟一拍的原因是区分before和after信号
-if(coreParams.useVerif){
+if(coreParams.useVerif) {
   dontTouch(io.verif.get)
-  io.verif.get.commit_valid := RegEnable(wb_reg_valid,0.U,coreParams.useVerif.B)
-  io.verif.get.commit_prevPc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
-  io.verif.get.commit_currPc := RegEnable(wb_npc.get,0.U,coreParams.useVerif.B)
-  val reg_commit_order = RegInit(0.U((NRET*10).W))
-//  when(wb_reg_valid&(coreParams.useVerif.B)){
-//      reg_commit_order := reg_commit_order + 1.U
-//  }
-//  io.verif.get.commit_order := reg_commit_order
+  io.verif.get.commit_valid := RegEnable(wb_reg_valid, 0.U, coreParams.useVerif.B)
+  io.verif.get.commit_prevPc := RegEnable(wb_reg_pc, 0.U, coreParams.useVerif.B)
+  io.verif.get.commit_currPc := RegEnable(wb_npc.get, 0.U, coreParams.useVerif.B)
+  val reg_commit_order = RegInit(0.U((NRET * 10).W))
+  //  when(wb_reg_valid&(coreParams.useVerif.B)){
+  //      reg_commit_order := reg_commit_order + 1.U
+  //  }
+  //  io.verif.get.commit_order := reg_commit_order
   io.verif.get.commit_order := 0.U
-  io.verif.get.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst),0.U,coreParams.useVerif.B)
+  io.verif.get.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst), 0.U, coreParams.useVerif.B)
   io.verif.get.commit_fused := 0.U
 
-  io.verif.get.sim_halt := 0.U
+  io.verif.get.sim_halt := (rf.ver_read_withoutrestrict===(0.U)) && (wb_reg_inst === (0x73.U(32.W)))
 
-  io.verif.get.trap_valid := RegEnable(wb_xcpt,0.U,coreParams.useVerif.B)
-//  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
+  io.verif.get.trap_valid := RegEnable(wb_xcpt, 0.U, coreParams.useVerif.B)
+  //  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
   io.verif.get.trap_pc := 0.U
-//  io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
+  //  io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
   io.verif.get.trap_firstInsn := 0.U
 
 
-//因为延迟了一个周期所以寄存器中的值是after commit
+  //因为延迟了一个周期所以寄存器中的值是after commit
   io.verif.get.reg_gpr := rf.ver_read()
-//fpu寄存器的值通过fpu io接口引出
+  //fpu寄存器的值通过fpu io接口引出
+  //暂时将fpr设置为0 完成第一轮测试
   io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
-//verif_reg_vpr
+  //io.verif.get.reg_fpr := 0.U
+  //verif_reg_vpr
 
   //TODO: open later now set to 0
-/*
+  /*
   io.verif.get.dest_gprWr := RegEnable(wb_ctrl.wxd,0.U,coreParams.useVerif.B)
   io.verif.get.dest_fprWr := RegEnable(wb_ctrl.wfd,0.U,coreParams.useVerif.B)
 //verif_dest_vprWr
@@ -1278,7 +1284,7 @@ if(coreParams.useVerif){
   io.verif.get.dest_fprWr := 0.U
   io.verif.get.dest_vprWr := 0.U
   io.verif.get.dest_idx := 0.U
-  io.verif.get.src_vmaskRd :=0.U
+  io.verif.get.src_vmaskRd := 0.U
   io.verif.get.src1_gprRd := 0.U
   io.verif.get.src1_fprRd := 0.U
   io.verif.get.src1_vprRd := 0.U
@@ -1293,7 +1299,7 @@ if(coreParams.useVerif){
   io.verif.get.src3_idx := 0.U
 
   io.verif.get.csr_mstatusWr := csr.io.status.asUInt
-  io.verif.get.csr_mepcWr := csr.io.mepc.get 
+  io.verif.get.csr_mepcWr := csr.io.mepc.get
   io.verif.get.csr_mtvalWr := csr.io.mtval.get
   io.verif.get.csr_mtvecWr := csr.io.mtvec.get
   io.verif.get.csr_mcauseWr := csr.io.mcause.get
@@ -1368,7 +1374,7 @@ if(coreParams.useVerif){
   io.verif.get.csr_vstartRd := 0.U
 
   //TODO: open later now set to 0
-/*
+  /*
   io.verif.get.mem_valid := RegEnable(((wb_ctrl.mem_cmd === M_XRD)||(wb_ctrl.mem_cmd === M_XWR))&(wb_valid),0.U,coreParams.useVerif.B) //TODO:vector在这需要进行判断加一个或条件
   io.verif.get.mem_addr := RegEnable(wb_reg_verif_mem_addr.get,0.U,coreParams.useVerif.B) 
   io.verif.get.mem_isStore := RegEnable((wb_ctrl.mem_cmd === M_XRD),0.U,coreParams.useVerif.B)
@@ -1389,9 +1395,66 @@ if(coreParams.useVerif){
   io.verif.get.mem_maskRd := 0.U
   io.verif.get.mem_dataWr := 0.U
   io.verif.get.mem_datatRd := 0.U
+  //wzw:添加pc寄存器组，解决乱序写回验证问题
+  ////
+  class RegFile_pc(n: Int, w: Int, zero: Boolean = false) {
+    val rf = Mem(n, UInt(w.W))
 
+    private def access(addr: UInt) = rf(~addr(log2Up(n) - 1, 0))
+
+    private val reads = ArrayBuffer[(UInt, UInt)]()
+    //  private var canRead = true
+
+    def read(addr: UInt) = {
+      //   require(canRead)
+      reads += addr -> Wire(UInt())
+      reads.last._2 := Mux(zero.B && addr === 0.U, 0.U, access(addr))
+      reads.last._2
+    }
+
+    def write(addr: UInt, data: UInt) = {
+      //  canRead = false
+      when(addr =/= 0.U) {
+        access(addr) := data
+        for ((raddr, rdata) <- reads)
+          when(addr === raddr) {
+            rdata := data
+          }
+      }
+
+  }}
+  ////
+  val verif_reg_pc = new RegFile_pc(regAddrMask, xLen)
+  when(wb_set_sboard && wb_wen) {
+    verif_reg_pc.write(sboard_waddr, wb_reg_pc);
+  }.elsewhen(id_set_sboard & id_wen) {
+    verif_reg_pc.write(sboard_waddr, ibuf.io.pc)
+  }.elsewhen((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid) {
+    verif_reg_pc.write(wb_waddr, wb_reg_pc)
+  }
+
+  io.verif.get.update_reg_valid := RegEnable((ll_wen || (dmem_resp_replay && dmem_resp_fpu) || io.fpu.sboard_clr)&(~(ll_wen&((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen)))&(~(((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid)&(dmem_resp_replay && dmem_resp_fpu)))&(~((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set)&(io.fpu.sboard_clr)))), 0.U, coreParams.useVerif.B)
+  io.verif.get.update_reg_gpr_en := RegEnable(ll_wen, 0.U, coreParams.useVerif.B)
+  io.verif.get.update_reg_pc := RegEnable(Mux(ll_wen, verif_reg_pc.read(ll_waddr),
+    Mux(dmem_resp_replay && dmem_resp_fpu, verif_reg_pc.read(dmem_resp_waddr),
+      Mux(io.fpu.sboard_clr, verif_reg_pc.read(io.fpu.sboard_clra),
+        0.U))), 0.U, coreParams.useVerif.B)
+  io.verif.get.update_reg_rd := RegEnable(ll_waddr, 0.U, coreParams.useVerif.B)
+  io.verif.get.update_reg_rfd := RegEnable(Mux(dmem_resp_replay && dmem_resp_fpu, dmem_resp_waddr, io.fpu.sboard_clra), 0.U, coreParams.useVerif.B)
+  //io.verif.get.update_reg_data := Mux(ll_wen,ll_wdata,)
+  val gpr_index_begin = (64.U * io.verif.get.update_reg_rd).asUInt
+  //io.verif.get.update_reg_data := Mux(ll_wen,(io.verif.get.reg_gpr>>gpr_index_begin)(63:0),io.verif.get.reg_fpr((63.U*(io.verif.get.update_reg_rfd+1.U)).asUInt,(64.U*io.verif.get.update_reg_rfd).asUInt))
+  val reg_fpr_alone = Wire(Vec(32,UInt(64.W)))
+  for(i<-0 until(32)){
+    reg_fpr_alone(i):= io.verif.get.reg_fpr((i+1)*64-1,i*64)
+  }
+  val reg_gpr_alone = Wire(Vec(32, UInt(64.W)))
+  reg_gpr_alone(0):= 0.U
+  for(i<-1 until(32)){
+    reg_gpr_alone(i) := io.verif.get.reg_gpr(i*64 - 1, (i-1) * 64)
+  }
+  io.verif.get.update_reg_data := Mux(io.verif.get.update_reg_gpr_en.asBool,reg_gpr_alone(io.verif.get.update_reg_rd),reg_fpr_alone(io.verif.get.update_reg_rfd))
 }
-
   if (rocketParams.clockGate) {
     long_latency_stall := csr.io.csr_stall || io.dmem.perf.blocked || id_reg_pause && !unpause
     clock_en := clock_en_reg || ex_pc_valid || (!long_latency_stall && io.imem.resp.valid)
@@ -1474,10 +1537,10 @@ if(coreParams.useVerif){
          * @Editors: wuzewei
          * @Description: add vtrace
          */
-        if(openvtrace){
-        when(wb_valid){
-          printf(p"finish signal:vtype:${csr.io.vector.get.vconfig.vtype.asUInt}, vl:${csr.io.vector.get.vconfig.vl} \n") 
-        }}
+//        if(openvtrace){
+//        when(wb_valid){
+//          printf(p"finish signal:vtype:${csr.io.vector.get.vconfig.vtype.asUInt}, vl:${csr.io.vector.get.vconfig.vl} \n")
+//        }}
     }
   }
 
@@ -1575,12 +1638,14 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
    * @Description: work for verification
    */
   def ver_read() = {
-     val memoryValues = Wire(Vec(n,UInt(w.W)))
-     memoryValues(0):=0.U
-     for(i<- 1 until n){
-      memoryValues(i):= access(i.U)  
+     val memoryValues = Wire(Vec((31),UInt(w.W)))
+     for(i<- 0 until (31)){
+      memoryValues(i):= access((i+1).U)
     }
     Cat(memoryValues.reverse)
+  }
+  def ver_read_withoutrestrict={
+    access(0.U)
   }
 }
 

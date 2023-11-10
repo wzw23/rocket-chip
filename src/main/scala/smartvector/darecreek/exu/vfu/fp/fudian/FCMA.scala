@@ -34,3 +34,4 @@ class FCMA(val expWidth: Int, val precision: Int) extends Module {
 }
 
 
+

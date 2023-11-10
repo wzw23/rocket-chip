@@ -104,4 +104,10 @@ class VERIO(implicit p: Parameters) extends CoreBundle()(p) {
     val  mem_dataWr= Output(UInt((NRET*vLen*8).W))
     val  mem_datatRd= Output(UInt((NRET*vLen*8).W))
 
-    }
+    val  update_reg_valid = Output(UInt((NRET).W))
+    val  update_reg_gpr_en= Output(UInt((NRET).W))
+    val  update_reg_pc = Output(UInt((NRET*xLen).W))
+    val  update_reg_rd = Output(UInt((NRET*5).W))
+    val  update_reg_rfd = Output(UInt((NRET*5).W))
+    val  update_reg_data = Output(UInt((NRET*xLen).W))
+}
