@@ -110,4 +110,6 @@ class VERIO(implicit p: Parameters) extends CoreBundle()(p) {
     val  update_reg_rd = Output(UInt((NRET*5).W))
     val  update_reg_rfd = Output(UInt((NRET*5).W))
     val  update_reg_data = Output(UInt((NRET*xLen).W))
+    //add for sfma
+    val  sfma = Output(UInt((NRET).W))
 }

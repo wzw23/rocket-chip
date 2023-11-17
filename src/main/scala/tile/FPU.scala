@@ -210,6 +210,8 @@ class FPUCoreIO(implicit p: Parameters) extends CoreBundle()(p) {
  * @Description: add for verification
  */
   val fpu_ver_reg = coreParams.useVerif.option(Output(UInt((NRET*32*fLen).W)))
+  //wzw:add for sfma
+  val fpu_1_wen = coreParams.useVerif.option(Output(UInt((NRET).W)))
 }
 
 class FPUIO(implicit p: Parameters) extends FPUCoreIO ()(p) {
@@ -808,6 +810,7 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
   }
   io.fpu_ver_reg.get := Cat(memoryValues.reverse)
 }
+
   when (load_wb) {
     val wdata = recode(load_wb_data, load_wb_typeTag)
     regfile(load_wb_tag) := wdata
@@ -926,8 +929,10 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
   val mem_wen = mem_reg_valid && (mem_ctrl.fma || mem_ctrl.fastpipe || mem_ctrl.fromint)
   val write_port_busy = RegEnable(mem_wen && (memLatencyMask & latencyMask(ex_ctrl, 1)).orR || (wen & latencyMask(ex_ctrl, 0)).orR, req_valid)
   ccover(mem_reg_valid && write_port_busy, "WB_STRUCTURAL", "structural hazard on writeback")
+  //wzw:add for sfma
+  io.fpu_1_wen.get := req_valid && ex_ctrl.fma && ex_ctrl.typeTagOut === S
 
-  for (i <- 0 until maxLatency-2) {
+    for (i <- 0 until maxLatency-2) {
     when (wen(i+1)) { wbInfo(i) := wbInfo(i+1) }
   }
   wen := wen >> 1

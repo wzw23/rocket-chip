@@ -760,7 +760,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
 
     wb_reg_valid := !ctrl_killm
-    //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
+  //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
@@ -1243,7 +1243,7 @@ if(coreParams.useVerif) {
   io.verif.get.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst), 0.U, coreParams.useVerif.B)
   io.verif.get.commit_fused := 0.U
 
-  io.verif.get.sim_halt := (rf.ver_read_withoutrestrict===(0.U)) && (wb_reg_inst === (0x73.U(32.W)))
+  //io.verif.get.sim_halt := (rf.ver_read_withoutrestrict===(0.U)) && (wb_reg_inst === (0x73.U(32.W)))
 
   io.verif.get.trap_valid := RegEnable(wb_xcpt, 0.U, coreParams.useVerif.B)
   //  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
@@ -1256,8 +1256,8 @@ if(coreParams.useVerif) {
   io.verif.get.reg_gpr := rf.ver_read()
   //fpu寄存器的值通过fpu io接口引出
   //暂时将fpr设置为0 完成第一轮测试
-  io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
-  //io.verif.get.reg_fpr := 0.U
+  //io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
+  io.verif.get.reg_fpr := 0.U
   //verif_reg_vpr
 
   //TODO: open later now set to 0
@@ -1324,6 +1324,8 @@ if(coreParams.useVerif) {
   io.verif.get.csr_vlWr := csr.io.vl.get
   //io.verif.get.csr_vstartWr := csr.io.vstart.get
   io.verif.get.csr_vstartWr := 0.U
+  //wzw: add for sfma
+  io.verif.get.sfma := RegNext(RegNext(RegNext(io.fpu.fpu_1_wen.get)))
 
   //TODO: open later now set to 0
   /*
@@ -1424,20 +1426,21 @@ if(coreParams.useVerif) {
 
   }}
   ////
-  val verif_reg_pc = new RegFile_pc(regAddrMask, xLen)
+  val verif_reg_gpr_pc = new RegFile_pc(regAddrMask, xLen)
+  val verif_reg_fpr_pc = new RegFile_pc(regAddrMask, xLen)
   when(wb_set_sboard && wb_wen) {
-    verif_reg_pc.write(sboard_waddr, wb_reg_pc);
+    verif_reg_gpr_pc.write(sboard_waddr, wb_reg_pc);
   }.elsewhen(id_set_sboard & id_wen) {
-    verif_reg_pc.write(sboard_waddr, ibuf.io.pc)
+    verif_reg_fpr_pc.write(sboard_waddr, ibuf.io.pc)
   }.elsewhen((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid) {
-    verif_reg_pc.write(wb_waddr, wb_reg_pc)
+    verif_reg_fpr_pc.write(wb_waddr, wb_reg_pc)
   }
 
   io.verif.get.update_reg_valid := RegEnable((ll_wen || (dmem_resp_replay && dmem_resp_fpu) || io.fpu.sboard_clr)&(~(ll_wen&((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen)))&(~(((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid)&(dmem_resp_replay && dmem_resp_fpu)))&(~((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set)&(io.fpu.sboard_clr)))), 0.U, coreParams.useVerif.B)
   io.verif.get.update_reg_gpr_en := RegEnable(ll_wen, 0.U, coreParams.useVerif.B)
-  io.verif.get.update_reg_pc := RegEnable(Mux(ll_wen, verif_reg_pc.read(ll_waddr),
-    Mux(dmem_resp_replay && dmem_resp_fpu, verif_reg_pc.read(dmem_resp_waddr),
-      Mux(io.fpu.sboard_clr, verif_reg_pc.read(io.fpu.sboard_clra),
+  io.verif.get.update_reg_pc := RegEnable(Mux(ll_wen, verif_reg_gpr_pc.read(ll_waddr),
+    Mux(dmem_resp_replay && dmem_resp_fpu, verif_reg_fpr_pc.read(dmem_resp_waddr),
+      Mux(io.fpu.sboard_clr, verif_reg_fpr_pc.read(io.fpu.sboard_clra),
         0.U))), 0.U, coreParams.useVerif.B)
   io.verif.get.update_reg_rd := RegEnable(ll_waddr, 0.U, coreParams.useVerif.B)
   io.verif.get.update_reg_rfd := RegEnable(Mux(dmem_resp_replay && dmem_resp_fpu, dmem_resp_waddr, io.fpu.sboard_clra), 0.U, coreParams.useVerif.B)
@@ -1645,7 +1648,7 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
     Cat(memoryValues.reverse)
   }
   def ver_read_withoutrestrict={
-    access(0.U)
+    access(10.U)
   }
 }
 
