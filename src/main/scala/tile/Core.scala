@@ -209,5 +209,6 @@ trait HasCoreIO extends HasTileParameters {
     //wzw:add vpu interface
     val vpu_issue = Decoupled(new RVUissue)
     val vpu_commit = Flipped(new RVUCommit)
+    val vpu_rfdata = Input(Vec(32, UInt(128.W)))
   }
 }

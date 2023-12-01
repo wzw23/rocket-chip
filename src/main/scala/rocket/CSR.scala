@@ -404,6 +404,10 @@ class CSRFile(
   reset_mstatus.mpp := PRV.M.U
   reset_mstatus.prv := PRV.M.U
   reset_mstatus.xs := (if (usingRoCC) 3.U else 0.U)
+  //wzw change here to make the difftest run
+  reset_mstatus.vs := (if(coreParams.useVector) 3.U else 0.U)
+  reset_mstatus.fs := 3.U
+  //
   val reg_mstatus = RegInit(reset_mstatus)
 
   val new_prv = WireDefault(reg_mstatus.prv)

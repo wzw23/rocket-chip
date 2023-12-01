@@ -13,7 +13,7 @@ import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
 import scala.collection.mutable.ArrayBuffer
 //wzw:add smartVector
-import smartVector._
+//import smartVector._
 
 case class RocketCoreParams(
    /**
@@ -1231,7 +1231,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //有的信号延迟一拍的原因是区分before和after信号
 if(coreParams.useVerif) {
   dontTouch(io.verif.get)
-  io.verif.get.commit_valid := RegEnable(wb_reg_valid, 0.U, coreParams.useVerif.B)
+  io.verif.get.commit_valid := RegEnable(((wb_reg_valid)&(~wb_ctrl.vector))||io.vpu_commit.commit_vld , 0.U, coreParams.useVerif.B)
   io.verif.get.commit_prevPc := RegEnable(wb_reg_pc, 0.U, coreParams.useVerif.B)
   io.verif.get.commit_currPc := RegEnable(wb_npc.get, 0.U, coreParams.useVerif.B)
   val reg_commit_order = RegInit(0.U((NRET * 10).W))
@@ -1243,7 +1243,7 @@ if(coreParams.useVerif) {
   io.verif.get.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst), 0.U, coreParams.useVerif.B)
   io.verif.get.commit_fused := 0.U
 
-  //io.verif.get.sim_halt := (rf.ver_read_withoutrestrict===(0.U)) && (wb_reg_inst === (0x73.U(32.W)))
+  io.verif.get.sim_halt := RegNext((rf.ver_read_withoutrestrict===(0.U)) && (wb_reg_inst === (0x73.U(32.W))),0.U)
 
   io.verif.get.trap_valid := RegEnable(wb_xcpt, 0.U, coreParams.useVerif.B)
   //  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
@@ -1258,7 +1258,8 @@ if(coreParams.useVerif) {
   //暂时将fpr设置为0 完成第一轮测试
   //io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
   io.verif.get.reg_fpr := 0.U
-  //verif_reg_vpr
+  //io.verif.get.reg_vpr := io.vpu_rfdata
+  io.verif.get.reg_vpr := Cat(io.vpu_rfdata.reverse)
 
   //TODO: open later now set to 0
   /*
@@ -1317,13 +1318,13 @@ if(coreParams.useVerif) {
   io.verif.get.csr_satpWr := csr.io.satp.get
   io.verif.get.csr_sscratchWr := csr.io.sscratch.get
   //先将vtype vcsr vstart设置为0
-  //io.verif.get.csr_vtypeWr := csr.io.vtype.get
-  io.verif.get.csr_vtypeWr := 0.U
-  //io.verif.get.csr_vcsrWr := csr.io.vcsr.get
-  io.verif.get.csr_vcsrWr := 0.U
+  io.verif.get.csr_vtypeWr := csr.io.vtype.get
+  //io.verif.get.csr_vtypeWr := 0.U
+  io.verif.get.csr_vcsrWr := csr.io.vcsr.get
+  //io.verif.get.csr_vcsrWr := 0.U
   io.verif.get.csr_vlWr := csr.io.vl.get
-  //io.verif.get.csr_vstartWr := csr.io.vstart.get
-  io.verif.get.csr_vstartWr := 0.U
+  io.verif.get.csr_vstartWr := csr.io.vstart.get
+  //io.verif.get.csr_vstartWr := 0.U
   //wzw: add for sfma
   io.verif.get.sfma := RegNext(RegNext(RegNext(io.fpu.fpu_1_wen.get)))
 

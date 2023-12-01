@@ -166,6 +166,7 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   val vpu = Module(new SmartVector())
   vpu.io.in <> core.io.vpu_issue
   core.io.vpu_commit <> vpu.io.out.rvuCommit
+  core.io.vpu_rfdata <> vpu.io.rfData
   dontTouch(core.io.vpu_issue)
 
   fpuOpt foreach { fpu => core.io.fpu <> fpu.io }
