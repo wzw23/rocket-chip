@@ -154,15 +154,6 @@ trait HasCoreParameters extends HasTileParameters {
   // Requires post-processing due to out-of-order writebacks.
   val enableCommitLog = false
 
-  /**
-   * @Editors: wuzewei
-   * @Description: 用来开启trace 方便查看
-   */
-  //usetrace trace总开关
-  val opentrace = false
-  //vtrace 副开关
-  val openvtrace = true
-  val usevtrace = if(opentrace & openvtrace) true else false
 
 }
 
@@ -200,7 +191,6 @@ trait HasCoreIO extends HasTileParameters {
     val cease = Bool().asOutput
     val wfi = Bool().asOutput
     val traceStall = Bool().asInput
-    val decode_interface = new DecodeIO
     /**
      * @Editors: wuzewei
      * @Description: add for verification

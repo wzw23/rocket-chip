@@ -26,8 +26,6 @@ class BaseConfig extends Config(
  */
 // class DefaultConfig extends Config(new WithNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
 class DefaultConfig extends Config(new WithVectorUvmNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
-//class DefaultConfig extends Config(new WithVectorNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
-// class VectorConfig extends Config(new WithVectorNBigCores(1) ++ new WithCoherentBusTopology ++ new BaseConfig)
 
 
 class DefaultBufferlessConfig extends Config(new WithBufferlessBroadcastHub ++ new DefaultConfig)

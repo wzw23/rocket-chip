@@ -12,8 +12,6 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
 import scala.collection.mutable.ArrayBuffer
-//wzw:add smartVector
-//import smartVector._
 
 case class RocketCoreParams(
    /**
@@ -733,16 +731,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   // writeback stage
   //wzw:add for commit stage,Set it to 0 for now and connect to the vpu interface later.
-  val v_decode_ready=WireDefault(true.B)
-  val commit_vld = WireDefault(false.B)
-  val return_data_vld = WireDefault(false.B)
-  val return_data = WireDefault(0.U)
-  val retrun_reg_idx = WireDefault(0.U)
-  val exception_vld = WireDefault(0.B)
-  val illegal_inst = WireDefault(0.B)
+  //TODO:添加commit修改vl逻辑
   val update_vl = WireDefault(0.U)
   val update_vstart = WireDefault(0.U)
-  val update_data = WireDefault(0.U)
+  val update_vstart_data = WireDefault(0.U)
   //add exception and pc interface
   val vpu_pc = WireDefault(0.U)
   val vpu_mcause = WireDefault(0.U)
@@ -801,9 +793,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   val (wb_xcpt, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
-    (commit_vld&&illegal_inst,Causes.illegal_instruction.U),
+    (io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst,Causes.illegal_instruction.U),
     //wzw:若是访存异常的话，将wb_cause设置为vpu传过来的异常号
-    (commit_vld&&exception_vld,vpu_mcause),
+    (io.vpu_commit.commit_vld&&io.vpu_commit.exception_vld,vpu_mcause),
     (wb_reg_xcpt,  wb_reg_cause),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),
@@ -879,11 +871,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   issue_vconfig.vtype := VType.fromUInt(zimm,false)
   issue_vconfig.vl := VType.computeVL(wb_avl,zimm,csr.io.vector.get.vconfig.vl,wb_usecurrent,wb_usemax,wb_usezero)
   csr.io.vector.foreach { vio =>
+    //TODO:添加commit修改vl逻辑
     vio.set_vconfig.bits := issue_vconfig   
     vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset)
     //wzw:change for updating vstart
-    vio.set_vstart.valid := (commit_vld & update_vl)
-    vio.set_vstart.bits := update_data
+    vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))
+    vio.set_vstart.bits := update_vstart_data
     vio.set_vxsat := 0.U
     vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
     //vio.set_vs_dirty := false.asBool
@@ -917,9 +910,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   dontTouch(io.vpu_issue);
   dontTouch(io.vpu_commit);
 
-  io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
-  io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
-  io.decode_interface.lsu_resp_excp := io.dmem.s2_xcpt.pf.st||io.dmem.s2_xcpt.pf.ld
+  //io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
+  //io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
+  //io.decode_interface.lsu_resp_excp := io.dmem.s2_xcpt.pf.st||io.dmem.s2_xcpt.pf.ld
 
 
 
@@ -935,9 +928,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //wzw:写回阶段的接口
   if(usingVector){
     when(io.vpu_commit.commit_vld){
-      ll_wdata := return_data
-      ll_wen := return_data_vld
-      ll_waddr := retrun_reg_idx
+      ll_wdata := io.vpu_commit.return_data
+      ll_wen := io.vpu_commit.return_data_vld
+      ll_waddr := io.vpu_commit.return_reg_idx
     }
   }
   when (dmem_resp_replay && dmem_resp_xpu) {
@@ -980,7 +973,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   io.fpu.hartid := io.hartid
   csr.io.rocc_interrupt := io.rocc.interrupt
   //wzw：当vpu返回的值有效时，此时的pc是vpu传过来的pc
-  when(commit_vld){
+  when(io.vpu_commit.commit_vld){
     csr.io.pc := vpu_pc
   }.otherwise{
     csr.io.pc := wb_reg_pc
@@ -1108,8 +1101,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //val vpu_stall_id =
 
   val ctrl_stalld = {
-    //jyf:add stall logic
-   // (id_ctrl.vector&&(!v_decode_ready))||(isvectorrun && !id_ctrl.vector)||
     id_ex_hazard || id_mem_hazard || id_wb_hazard || id_sboard_hazard ||
     csr.io.singleStep && (ex_reg_valid || mem_reg_valid || wb_reg_valid) ||
     id_csr_en && csr.io.decode(0).fp_csr && !io.fpu.fcsr_rdy ||

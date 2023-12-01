@@ -14,7 +14,7 @@ import freechips.rocketchip.subsystem.TileCrossingParamsLike
 import freechips.rocketchip.util._
 import freechips.rocketchip.prci.{ClockSinkParameters}
 //wzw add vpu
-import smartVector._
+import smartVector.{SmartVector}
 import chisel3.{dontTouch}
 
 case class RocketTileBoundaryBufferParams(force: Boolean = false)
