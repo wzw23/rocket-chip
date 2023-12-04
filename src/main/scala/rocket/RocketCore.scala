@@ -4,6 +4,7 @@
 package freechips.rocketchip.rocket
 
 import chisel3._
+import chisel3.internal.firrtl.Verification
 import chisel3.util._
 import chisel3.withClock
 import org.chipsalliance.cde.config.Parameters
@@ -11,6 +12,7 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
+
 import scala.collection.mutable.ArrayBuffer
 
 case class RocketCoreParams(
@@ -21,6 +23,7 @@ case class RocketCoreParams(
   enVector: Boolean = false,
   //wzw:使用enUVM覆写父类
   enUVM: Boolean =false,
+
 
   bootFreqHz: BigInt = 0,
   useVM: Boolean = true,
@@ -281,8 +284,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Editors: wuzewei
    * @Description: add for veriification
    */
-  val mem_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
-  val mem_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+  //val mem_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
+  //val mem_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+
 
   val mem_br_taken = Reg(Bool())
   val take_pc_mem = Wire(Bool())
@@ -312,9 +316,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Editors: wuzewei
    * @Description: add for verification
    */
-  val wb_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
-  val wb_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
-  val wb_npc = coreParams.useVerif.option(Reg(Bits()))
+  //val wb_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
+  //val wb_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+  //val wb_npc = coreParams.useVerif.option(Reg(Bits()))
 
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
@@ -324,6 +328,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   // decode stage
   val ibuf = Module(new IBuf)
+  //wzw:add verification unit
+  val ver_module = Module(new UvmVerification)
   val id_expanded_inst = ibuf.io.inst.map(_.bits.inst)
   val id_raw_inst = ibuf.io.inst.map(_.bits.raw)
   val id_inst = id_expanded_inst.map(_.bits)
@@ -688,14 +694,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     when (ex_ctrl.rxs1) {
       mem_reg_rs1 := ex_rs(0).asUInt
     }
-    /**
-     * @Editors: wuzewei
-     * @Description: add for verification
-     */
-    if(coreParams.useVerif){
-    mem_reg_verif_mem_addr.get := alu.io.adder_out
-    mem_reg_verif_mem_datawr.get := (if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2))
-  }
 
     when (ex_ctrl.jalr && csr.io.status.debug) {
       // flush I$ on D-mode JALR to effect uncached fetch without D$ flush
@@ -769,15 +767,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
      * @Description: x[rs1]
      */
     wb_reg_rs1:=mem_reg_rs1
-    /**
-     * @Editors: wuzewei
-     * @Description: add for verification
-     */
-    if(coreParams.useVerif){
-     wb_reg_verif_mem_addr.get := mem_reg_verif_mem_addr.get
-     wb_reg_verif_mem_datawr.get := mem_reg_verif_mem_datawr.get
-     wb_npc.get := mem_npc
-}
+
 
     wb_reg_cause := mem_cause
     wb_reg_inst := mem_reg_inst
@@ -882,18 +872,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     //vio.set_vs_dirty := false.asBool
     }
 
-  //加decode接口，jyf
-//  dontTouch(io.decode_interface)
-//  io.decode_interface.instr := id_inst(0)
-//  io.decode_interface.rs1 := ex_rs(0)
-//  io.decode_interface.rs2 := ex_rs(1)
-//  io.decode_interface.valid := !ctrl_killd && id_ctrl.vector
-//  io.decode_interface.vl := csr.io.vector.get.vconfig.vl
-//  io.decode_interface.vstart := csr.io.vector.get.vstart
-//  io.decode_interface.vma := csr.io.vector.get.vconfig.vtype.vma
-//  io.decode_interface.vta := csr.io.vector.get.vconfig.vtype.vta
-//  io.decode_interface.vsew := csr.io.vector.get.vconfig.vtype.vsew
-//  io.decode_interface.vlmul := csr.io.vector.get.vconfig.vtype.vlmul_signed.asUInt
   //wzw:change vpu decode interface
   io.vpu_issue.valid := ex_reg_valid && ex_ctrl.vector
   io.vpu_issue.bits.inst := ex_reg_inst
@@ -1097,8 +1075,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }.elsewhen(io.vpu_issue.fire) {table := table + 1.U}
   .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
   val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
-  //wzw add vpu_stall
-  //val vpu_stall_id =
 
   val ctrl_stalld = {
     id_ex_hazard || id_mem_hazard || id_wb_hazard || id_sboard_hazard ||
@@ -1221,234 +1197,67 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    */
   //有的信号延迟一拍的原因是区分before和after信号
 if(coreParams.useVerif) {
+  ver_module.io.uvm_in.adder_in := alu.io.adder_out
+  ver_module.io.uvm_in.mem_datawr_in := (if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2))
+  ver_module.io.uvm_in.mem_npc := mem_npc
+
+  ver_module.io.uvm_in.vpu_commit_vld := io.vpu_commit.commit_vld
+  ver_module.io.uvm_in.wb_ctrl := wb_ctrl
+  ver_module.io.uvm_in.wb_reg_valid := wb_reg_valid
+  ver_module.io.uvm_in.wb_reg_pc := wb_reg_pc
+  ver_module.io.uvm_in.wb_reg_raw_inst := wb_reg_raw_inst
+  ver_module.io.uvm_in.wb_reg_inst := wb_reg_inst
+  ver_module.io.uvm_in.ver_read_withoutrestrict := rf.ver_read_withoutrestrict()
+  ver_module.io.uvm_in.wb_xcpt := wb_xcpt
+  ver_module.io.uvm_in.ver_read := rf.ver_read()
+  ver_module.io.uvm_in.vpu_rfdata := io.vpu_rfdata
+
+  ver_module.io.uvm_in.status := csr.io.status.asUInt
+  ver_module.io.uvm_in.mepc := csr.io.mepc.get
+  ver_module.io.uvm_in.mtval := csr.io.mtval.get
+  ver_module.io.uvm_in.mtvec := csr.io.mtvec.get
+  ver_module.io.uvm_in.mcause := csr.io.mcause.get
+  ver_module.io.uvm_in.mip := csr.io.mip.get
+  ver_module.io.uvm_in.mie := csr.io.mie.get
+  ver_module.io.uvm_in.mscratch := csr.io.mscratch.get
+  ver_module.io.uvm_in.mideleg := csr.io.mideleg.get
+  ver_module.io.uvm_in.medeleg := csr.io.medeleg.get
+  ver_module.io.uvm_in.minstret := csr.io.minstret.get
+  ver_module.io.uvm_in.sstatus := csr.io.sstatus.get.asUInt
+  ver_module.io.uvm_in.sepc := csr.io.sepc.get
+  ver_module.io.uvm_in.stval := csr.io.stval.get
+  ver_module.io.uvm_in.stvec := csr.io.stvec.get
+  ver_module.io.uvm_in.scause := csr.io.scause.get
+  ver_module.io.uvm_in.satp := csr.io.satp.get
+  ver_module.io.uvm_in.sscratch := csr.io.sscratch.get
+  ver_module.io.uvm_in.vtype := csr.io.vtype.get
+  ver_module.io.uvm_in.vcsr := csr.io.vcsr.get
+  ver_module.io.uvm_in.vl := csr.io.vl.get
+  ver_module.io.uvm_in.vstart := csr.io.vstart.get
+  ver_module.io.uvm_in.fpu_1_wen := RegNext(RegNext(RegNext(io.fpu.fpu_1_wen.get)))
+
+  ver_module.io.uvm_in.wb_set_sboard := wb_set_sboard
+  ver_module.io.uvm_in.wb_wen := wb_wen
+  ver_module.io.uvm_in.sboard_waddr := sboard_waddr
+  ver_module.io.uvm_in.id_set_sboard := id_set_sboard
+  ver_module.io.uvm_in.id_wen := id_wen
+  ver_module.io.uvm_in.ibuf_pc := ibuf.io.pc
+  ver_module.io.uvm_in.wb_dcache_miss := wb_dcache_miss
+  ver_module.io.uvm_in.fpu_sboard_set := io.fpu.sboard_set
+  ver_module.io.uvm_in.wb_valid := wb_valid
+  ver_module.io.uvm_in.wb_waddr := wb_waddr
+
+  ver_module.io.uvm_in.ll_wen := ll_wen
+  ver_module.io.uvm_in.ll_waddr := ll_waddr
+  ver_module.io.uvm_in.dmem_resp_replay := dmem_resp_replay
+  ver_module.io.uvm_in.dmem_resp_fpu := dmem_resp_fpu
+  ver_module.io.uvm_in.dmem_resp_waddr := dmem_resp_waddr
+  ver_module.io.uvm_in.fpu_sboard_clr := io.fpu.sboard_clr
+  ver_module.io.uvm_in.wb_waddr := wb_waddr
+  ver_module.io.uvm_in.fpu_sboard_clra := io.fpu.sboard_clra
+
   dontTouch(io.verif.get)
-  io.verif.get.commit_valid := RegEnable(((wb_reg_valid)&(~wb_ctrl.vector))||io.vpu_commit.commit_vld , 0.U, coreParams.useVerif.B)
-  io.verif.get.commit_prevPc := RegEnable(wb_reg_pc, 0.U, coreParams.useVerif.B)
-  io.verif.get.commit_currPc := RegEnable(wb_npc.get, 0.U, coreParams.useVerif.B)
-  val reg_commit_order = RegInit(0.U((NRET * 10).W))
-  //  when(wb_reg_valid&(coreParams.useVerif.B)){
-  //      reg_commit_order := reg_commit_order + 1.U
-  //  }
-  //  io.verif.get.commit_order := reg_commit_order
-  io.verif.get.commit_order := 0.U
-  io.verif.get.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst), 0.U, coreParams.useVerif.B)
-  io.verif.get.commit_fused := 0.U
-
-  io.verif.get.sim_halt := RegNext((rf.ver_read_withoutrestrict===(0.U)) && (wb_reg_inst === (0x73.U(32.W))),0.U)
-
-  io.verif.get.trap_valid := RegEnable(wb_xcpt, 0.U, coreParams.useVerif.B)
-  //  io.verif.get.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
-  io.verif.get.trap_pc := 0.U
-  //  io.verif.get.trap_firstInsn := RegEnable(csr.io.evec,0.U,coreParams.useVerif.B)
-  io.verif.get.trap_firstInsn := 0.U
-
-
-  //因为延迟了一个周期所以寄存器中的值是after commit
-  io.verif.get.reg_gpr := rf.ver_read()
-  //fpu寄存器的值通过fpu io接口引出
-  //暂时将fpr设置为0 完成第一轮测试
-  //io.verif.get.reg_fpr := io.fpu.fpu_ver_reg.get
-  io.verif.get.reg_fpr := 0.U
-  //io.verif.get.reg_vpr := io.vpu_rfdata
-  io.verif.get.reg_vpr := Cat(io.vpu_rfdata.reverse)
-
-  //TODO: open later now set to 0
-  /*
-  io.verif.get.dest_gprWr := RegEnable(wb_ctrl.wxd,0.U,coreParams.useVerif.B)
-  io.verif.get.dest_fprWr := RegEnable(wb_ctrl.wfd,0.U,coreParams.useVerif.B)
-//verif_dest_vprWr
-  io.verif.get.dest_idx := RegEnable(wb_waddr,0.U,coreParams.useVerif.B)
-//verif_src_vmaskRd
-  io.verif.get.src1_gprRd := RegEnable(wb_ctrl.rxs1,0.U,coreParams.useVerif.B)
-  io.verif.get.src1_fprRd := RegEnable(wb_ctrl.rfs1,0.U,coreParams.useVerif.B)
-//verif_src1_vprRd
-  io.verif.get.src1_idx := RegEnable(wb_raddr1,0.U,coreParams.useVerif.B)//是直接向后引还是取再次译码的值 有时间的话再引
-  io.verif.get.src2_gprRd := RegEnable(wb_ctrl.rxs2,0.U,coreParams.useVerif.B)
-  io.verif.get.src2_fprRd := RegEnable(wb_ctrl.rfs2,0.U,coreParams.useVerif.B)
-//verif_src2_vprRd
-  io.verif.get.src2_idx :=  RegEnable(wb_reg_inst(24,20),0.U,coreParams.useVerif.B)
-  io.verif.get.src3_gprRd := false.B
-  io.verif.get.src3_fprRd := false.B
-//verif_src3_vprRd
-//verif_src3_idx
-*/
-  io.verif.get.dest_gprWr := 0.U
-  io.verif.get.dest_fprWr := 0.U
-  io.verif.get.dest_vprWr := 0.U
-  io.verif.get.dest_idx := 0.U
-  io.verif.get.src_vmaskRd := 0.U
-  io.verif.get.src1_gprRd := 0.U
-  io.verif.get.src1_fprRd := 0.U
-  io.verif.get.src1_vprRd := 0.U
-  io.verif.get.src1_idx := 0.U
-  io.verif.get.src2_gprRd := 0.U
-  io.verif.get.src2_fprRd := 0.U
-  io.verif.get.src2_vprRd := 0.U
-  io.verif.get.src2_idx := 0.U
-  io.verif.get.src3_gprRd := 0.U
-  io.verif.get.src3_fprRd := 0.U
-  io.verif.get.src3_vprRd := 0.U
-  io.verif.get.src3_idx := 0.U
-
-  io.verif.get.csr_mstatusWr := csr.io.status.asUInt
-  io.verif.get.csr_mepcWr := csr.io.mepc.get
-  io.verif.get.csr_mtvalWr := csr.io.mtval.get
-  io.verif.get.csr_mtvecWr := csr.io.mtvec.get
-  io.verif.get.csr_mcauseWr := csr.io.mcause.get
-  io.verif.get.csr_mipWr := csr.io.mip.get
-  io.verif.get.csr_mieWr := csr.io.mie.get
-  io.verif.get.csr_mscratchWr := csr.io.mscratch.get
-  io.verif.get.csr_midelegWr := csr.io.mideleg.get
-  io.verif.get.csr_medelegWr := csr.io.medeleg.get
-  io.verif.get.csr_minstretWr := csr.io.minstret.get
-  io.verif.get.csr_sstatusWr := csr.io.sstatus.get.asUInt
-  io.verif.get.csr_sepcWr := csr.io.sepc.get
-  io.verif.get.csr_stvalWr := csr.io.stval.get
-  io.verif.get.csr_stvecWr := csr.io.stvec.get
-  io.verif.get.csr_scauseWr := csr.io.scause.get
-  io.verif.get.csr_satpWr := csr.io.satp.get
-  io.verif.get.csr_sscratchWr := csr.io.sscratch.get
-  //先将vtype vcsr vstart设置为0
-  io.verif.get.csr_vtypeWr := csr.io.vtype.get
-  //io.verif.get.csr_vtypeWr := 0.U
-  io.verif.get.csr_vcsrWr := csr.io.vcsr.get
-  //io.verif.get.csr_vcsrWr := 0.U
-  io.verif.get.csr_vlWr := csr.io.vl.get
-  io.verif.get.csr_vstartWr := csr.io.vstart.get
-  //io.verif.get.csr_vstartWr := 0.U
-  //wzw: add for sfma
-  io.verif.get.sfma := RegNext(RegNext(RegNext(io.fpu.fpu_1_wen.get)))
-
-  //TODO: open later now set to 0
-  /*
-    io.verif.get.csr_mstatusRd := RegEnable(csr.io.status.asUInt,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mepcRd := RegEnable(csr.io.mepc.get ,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mtvalRd := RegEnable(csr.io.mtval.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mtvecRd := RegEnable(csr.io.mtvec.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mcauseRd := RegEnable(csr.io.mcause.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mipRd := RegEnable(csr.io.mip.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mieRd := RegEnable(csr.io.mie.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_mscratchRd := RegEnable(csr.io.mscratch.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_midelegRd := RegEnable(csr.io.mideleg.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_medelegRd := RegEnable(csr.io.medeleg.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_minstretRd := RegEnable(csr.io.minstret.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_sstatusRd := RegEnable(csr.io.sstatus.get.asUInt,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_sepcRd := RegEnable(csr.io.sepc.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_stvalRd := RegEnable(csr.io.stval.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_stvecRd := RegEnable(csr.io.stvec.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_scauseRd := RegEnable(csr.io.scause.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_satpRd := RegEnable(csr.io.satp.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_sscratchRd := RegEnable(csr.io.sscratch.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_vtypeRd := RegEnable(csr.io.vtype.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_vcsrRd := RegEnable(csr.io.vcsr.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_vlRd := RegEnable(csr.io.vl.get,0.U,coreParams.useVerif.B)
-    io.verif.get.csr_vstartRd := RegEnable(csr.io.vstart.get,0.U,coreParams.useVerif.B)
-  */
-  io.verif.get.csr_mstatusRd := 0.U
-  io.verif.get.csr_mepcRd := 0.U
-  io.verif.get.csr_mtvalRd := 0.U
-  io.verif.get.csr_mtvecRd := 0.U
-  io.verif.get.csr_mcauseRd := 0.U
-  io.verif.get.csr_mipRd := 0.U
-  io.verif.get.csr_mieRd := 0.U
-  io.verif.get.csr_mscratchRd := 0.U
-  io.verif.get.csr_midelegRd := 0.U
-  io.verif.get.csr_medelegRd := 0.U
-  io.verif.get.csr_minstretRd := 0.U
-  io.verif.get.csr_sstatusRd := 0.U
-  io.verif.get.csr_sepcRd := 0.U
-  io.verif.get.csr_stvalRd := 0.U
-  io.verif.get.csr_stvecRd := 0.U
-  io.verif.get.csr_scauseRd := 0.U
-  io.verif.get.csr_satpRd := 0.U
-  io.verif.get.csr_sscratchRd := 0.U
-  io.verif.get.csr_vtypeRd := 0.U
-  io.verif.get.csr_vcsrRd := 0.U
-  io.verif.get.csr_vlRd := 0.U
-  io.verif.get.csr_vstartRd := 0.U
-
-  //TODO: open later now set to 0
-  /*
-  io.verif.get.mem_valid := RegEnable(((wb_ctrl.mem_cmd === M_XRD)||(wb_ctrl.mem_cmd === M_XWR))&(wb_valid),0.U,coreParams.useVerif.B) //TODO:vector在这需要进行判断加一个或条件
-  io.verif.get.mem_addr := RegEnable(wb_reg_verif_mem_addr.get,0.U,coreParams.useVerif.B) 
-  io.verif.get.mem_isStore := RegEnable((wb_ctrl.mem_cmd === M_XRD),0.U,coreParams.useVerif.B)
-  io.verif.get.mem_isLoad  := RegEnable((wb_ctrl.mem_cmd === M_XWR),0.U,coreParams.useVerif.B)  
-  io.verif.get.mem_isVector := RegEnable((wb_ctrl.vector===true.B),0.U,coreParams.useVerif.B)
-  val delay_wb_reg_mem_size = RegEnable(1.U<<(1.U<<wb_reg_mem_size)-1.U,0.U,coreParams.useVerif.B)
-  io.verif.get.mem_maskWr := delay_wb_reg_mem_size
-  io.verif.get.mem_maskRd := delay_wb_reg_mem_size 
-  io.verif.get.mem_dataWr := RegEnable(wb_reg_verif_mem_datawr.get,0.U,coreParams.useVerif.B) 
-  io.verif.get.mem_datatRd := RegEnable(io.dmem.resp.bits.data(xLen-1, 0),0.U,coreParams.useVerif.B)
-  */
-  io.verif.get.mem_valid := 0.U
-  io.verif.get.mem_addr := 0.U
-  io.verif.get.mem_isStore := 0.U
-  io.verif.get.mem_isLoad := 0.U
-  io.verif.get.mem_isVector := 0.U
-  io.verif.get.mem_maskWr := 0.U
-  io.verif.get.mem_maskRd := 0.U
-  io.verif.get.mem_dataWr := 0.U
-  io.verif.get.mem_datatRd := 0.U
-  //wzw:添加pc寄存器组，解决乱序写回验证问题
-  ////
-  class RegFile_pc(n: Int, w: Int, zero: Boolean = false) {
-    val rf = Mem(n, UInt(w.W))
-
-    private def access(addr: UInt) = rf(~addr(log2Up(n) - 1, 0))
-
-    private val reads = ArrayBuffer[(UInt, UInt)]()
-    //  private var canRead = true
-
-    def read(addr: UInt) = {
-      //   require(canRead)
-      reads += addr -> Wire(UInt())
-      reads.last._2 := Mux(zero.B && addr === 0.U, 0.U, access(addr))
-      reads.last._2
-    }
-
-    def write(addr: UInt, data: UInt) = {
-      //  canRead = false
-      when(addr =/= 0.U) {
-        access(addr) := data
-        for ((raddr, rdata) <- reads)
-          when(addr === raddr) {
-            rdata := data
-          }
-      }
-
-  }}
-  ////
-  val verif_reg_gpr_pc = new RegFile_pc(regAddrMask, xLen)
-  val verif_reg_fpr_pc = new RegFile_pc(regAddrMask, xLen)
-  when(wb_set_sboard && wb_wen) {
-    verif_reg_gpr_pc.write(sboard_waddr, wb_reg_pc);
-  }.elsewhen(id_set_sboard & id_wen) {
-    verif_reg_fpr_pc.write(sboard_waddr, ibuf.io.pc)
-  }.elsewhen((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid) {
-    verif_reg_fpr_pc.write(wb_waddr, wb_reg_pc)
-  }
-
-  io.verif.get.update_reg_valid := RegEnable((ll_wen || (dmem_resp_replay && dmem_resp_fpu) || io.fpu.sboard_clr)&(~(ll_wen&((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen)))&(~(((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid)&(dmem_resp_replay && dmem_resp_fpu)))&(~((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set)&(io.fpu.sboard_clr)))), 0.U, coreParams.useVerif.B)
-  io.verif.get.update_reg_gpr_en := RegEnable(ll_wen, 0.U, coreParams.useVerif.B)
-  io.verif.get.update_reg_pc := RegEnable(Mux(ll_wen, verif_reg_gpr_pc.read(ll_waddr),
-    Mux(dmem_resp_replay && dmem_resp_fpu, verif_reg_fpr_pc.read(dmem_resp_waddr),
-      Mux(io.fpu.sboard_clr, verif_reg_fpr_pc.read(io.fpu.sboard_clra),
-        0.U))), 0.U, coreParams.useVerif.B)
-  io.verif.get.update_reg_rd := RegEnable(ll_waddr, 0.U, coreParams.useVerif.B)
-  io.verif.get.update_reg_rfd := RegEnable(Mux(dmem_resp_replay && dmem_resp_fpu, dmem_resp_waddr, io.fpu.sboard_clra), 0.U, coreParams.useVerif.B)
-  //io.verif.get.update_reg_data := Mux(ll_wen,ll_wdata,)
-  val gpr_index_begin = (64.U * io.verif.get.update_reg_rd).asUInt
-  //io.verif.get.update_reg_data := Mux(ll_wen,(io.verif.get.reg_gpr>>gpr_index_begin)(63:0),io.verif.get.reg_fpr((63.U*(io.verif.get.update_reg_rfd+1.U)).asUInt,(64.U*io.verif.get.update_reg_rfd).asUInt))
-  val reg_fpr_alone = Wire(Vec(32,UInt(64.W)))
-  for(i<-0 until(32)){
-    reg_fpr_alone(i):= io.verif.get.reg_fpr((i+1)*64-1,i*64)
-  }
-  val reg_gpr_alone = Wire(Vec(32, UInt(64.W)))
-  reg_gpr_alone(0):= 0.U
-  for(i<-1 until(32)){
-    reg_gpr_alone(i) := io.verif.get.reg_gpr(i*64 - 1, (i-1) * 64)
-  }
-  io.verif.get.update_reg_data := Mux(io.verif.get.update_reg_gpr_en.asBool,reg_gpr_alone(io.verif.get.update_reg_rd),reg_fpr_alone(io.verif.get.update_reg_rfd))
+  io.verif.get <> ver_module.io.uvm_out
 }
   if (rocketParams.clockGate) {
     long_latency_stall := csr.io.csr_stall || io.dmem.perf.blocked || id_reg_pause && !unpause
@@ -1527,15 +1336,6 @@ if(coreParams.useVerif) {
          Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1src, 0.U),
          Mux(wb_ctrl.rxs2 || wb_ctrl.rfs2, coreMonitorBundle.rd1val, 0.U),
          coreMonitorBundle.inst, coreMonitorBundle.inst)
-
-        /**
-         * @Editors: wuzewei
-         * @Description: add vtrace
-         */
-//        if(openvtrace){
-//        when(wb_valid){
-//          printf(p"finish signal:vtype:${csr.io.vector.get.vconfig.vtype.asUInt}, vl:${csr.io.vector.get.vconfig.vl} \n")
-//        }}
     }
   }
 
@@ -1639,7 +1439,7 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
     }
     Cat(memoryValues.reverse)
   }
-  def ver_read_withoutrestrict={
+  def ver_read_withoutrestrict():UInt={
     access(10.U)
   }
 }

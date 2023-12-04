@@ -195,7 +195,7 @@ trait HasCoreIO extends HasTileParameters {
      * @Editors: wuzewei
      * @Description: add for verification
      */
-    val verif = coreParams.useVerif.option(new VERIO)
+    val verif = coreParams.useVerif.option(new VEROUTIO)
     //wzw:add vpu interface
     val vpu_issue = Decoupled(new RVUissue)
     val vpu_commit = Flipped(new RVUCommit)
