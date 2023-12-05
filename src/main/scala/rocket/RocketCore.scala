@@ -4,7 +4,6 @@
 package freechips.rocketchip.rocket
 
 import chisel3._
-import chisel3.internal.firrtl.Verification
 import chisel3.util._
 import chisel3.withClock
 import org.chipsalliance.cde.config.Parameters
@@ -12,7 +11,6 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
-
 import scala.collection.mutable.ArrayBuffer
 
 case class RocketCoreParams(
@@ -23,7 +21,6 @@ case class RocketCoreParams(
   enVector: Boolean = false,
   //wzw:使用enUVM覆写父类
   enUVM: Boolean =false,
-
 
   bootFreqHz: BigInt = 0,
   useVM: Boolean = true,
@@ -280,12 +277,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: 添加mem_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
    */
   val mem_reg_rs1 = Reg(Bits())
-  /**
-   * @Editors: wuzewei
-   * @Description: add for veriification
-   */
-  //val mem_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
-  //val mem_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+
+
 
 
   val mem_br_taken = Reg(Bool())
@@ -312,13 +305,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: 添加wb_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
    */
   val wb_reg_rs1 = Reg(Bits())
-  /**
-   * @Editors: wuzewei
-   * @Description: add for verification
-   */
-  //val wb_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
-  //val wb_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
-  //val wb_npc = coreParams.useVerif.option(Reg(Bits()))
 
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
@@ -864,9 +850,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     //TODO:添加commit修改vl逻辑
     vio.set_vconfig.bits := issue_vconfig   
     vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset)
-    //wzw:change for updating vstart
-    vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))
-    vio.set_vstart.bits := update_vstart_data
+    //wzw:change for updating vstart All vector instructions, including vset{i}vl{i}, reset the vstart CSR to zero
+    vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset)
+    vio.set_vstart.bits := Mux((wb_valid & wb_ctrl.vset),0.U,update_vstart_data)
     vio.set_vxsat := 0.U
     vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
     //vio.set_vs_dirty := false.asBool

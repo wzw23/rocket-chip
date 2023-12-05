@@ -169,6 +169,11 @@ class VERINIO(implicit p: Parameters) extends CoreBundle()(p){
   val fpu_sboard_clra = Input(UInt())
 }
 
+class QueueSigal (implicit p: Parameters) extends CoreBundle()(p) {
+    val prePc = UInt(xLen.W)
+    val currPc = UInt(xLen.W)
+    val insn = UInt(xLen.W)
+}
 
 class UvmVerification(implicit p:Parameters) extends CoreModule{
   val io = IO(new Bundle() {
@@ -186,11 +191,31 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   wb_reg_verif_mem_datawr := mem_reg_verif_mem_datawr
   wb_npc := io.uvm_in.mem_npc
   //
+  class MyQueue extends Module {
+    val io = IO(new Bundle {
+      val in = Flipped(Decoupled(new QueueSigal))
+      val out = Decoupled(new QueueSigal)
+      val cnt = Output(UInt(4.W))
+    })
+    val q = Module(new Queue(new QueueSigal,entries = 8))
+    q.io.enq <> io.in
+    io.out <> q.io.deq
+    io.cnt <> q.io.count
+  }
+  val wb_insn ={if (usingCompressed) Cat(Mux(io.uvm_in.wb_reg_raw_inst(1, 0).andR, (io.uvm_in.wb_reg_inst) >> 16, 0.U), io.uvm_in.wb_reg_raw_inst(15, 0)) else io.uvm_in.wb_reg_inst}
+  // add to store necessary vpu signal
+  val q = Module(new MyQueue)
+  q.io.in.bits.prePc := io.uvm_in.wb_reg_pc
+  q.io.in.bits.currPc := wb_npc
+  q.io.in.bits.insn := wb_insn
+  q.io.in.valid := io.uvm_in.wb_reg_valid & io.uvm_in.wb_ctrl.vector
+  q.io.out.ready := io.uvm_out.commit_valid
+  //
   io.uvm_out.commit_valid := RegEnable(((io.uvm_in.wb_reg_valid)&(~io.uvm_in.wb_ctrl.vector))||io.uvm_in.vpu_commit_vld , 0.U, coreParams.useVerif.B)
-  io.uvm_out.commit_prevPc := RegEnable(io.uvm_in.wb_reg_pc, 0.U, coreParams.useVerif.B)
-  io.uvm_out.commit_currPc := RegEnable(wb_npc, 0.U, coreParams.useVerif.B)
+  io.uvm_out.commit_prevPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.prePc,io.uvm_in.wb_reg_pc), 0.U, coreParams.useVerif.B)
+  io.uvm_out.commit_currPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.currPc,wb_npc), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_order := 0.U
-  io.uvm_out.commit_insn := RegEnable((if (usingCompressed) Cat(Mux(io.uvm_in.wb_reg_raw_inst(1, 0).andR, (io.uvm_in.wb_reg_inst) >> 16, 0.U), io.uvm_in.wb_reg_raw_inst(15, 0)) else io.uvm_in.wb_reg_inst), 0.U, coreParams.useVerif.B)
+  io.uvm_out.commit_insn := RegEnable(Mux(q.io.out.fire,q.io.out.bits.insn,wb_insn), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_fused := 0.U
 
   io.uvm_out.sim_halt := RegNext((io.uvm_in.ver_read_withoutrestrict===(0.U)) && (io.uvm_in.wb_reg_inst === (0x73.U(32.W))),0.U)
@@ -410,5 +435,6 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
     reg_gpr_alone(i) := io.uvm_out.reg_gpr(i*64 - 1, (i-1) * 64)
   }
   io.uvm_out.update_reg_data := Mux(io.uvm_out.update_reg_gpr_en.asBool,reg_gpr_alone(io.uvm_out.update_reg_rd),reg_fpr_alone(io.uvm_out.update_reg_rfd))
+
 
 }
