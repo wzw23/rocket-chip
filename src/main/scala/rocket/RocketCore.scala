@@ -312,6 +312,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val take_pc_mem_wb = take_pc_wb || take_pc_mem
   val take_pc = take_pc_mem_wb
 
+  //zxr: For the pipeline control 
+  //**
+  val ex_continue = Reg(Bool())
+  val mem_continue = Reg(Bool())
+  //**
+
   // decode stage
   val ibuf = Module(new IBuf)
   //wzw:add verification unit
@@ -635,11 +641,23 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   mem_reg_xcpt := !ctrl_killx && ex_xcpt
   mem_reg_xcpt_interrupt := !take_pc_mem_wb && ex_reg_xcpt_interrupt
 
+  //zxr:allow the vecotr instruction already in the EX stage to continue
+  // **
+  
+  when(ex_ctrl.vector && !id_ctrl.vector){
+    ex_continue := true.B
+  }otherwise{
+    ex_continue := false.B
+  }
+  when(mem_continue){
+    ex_ctrl.vector := false.B
+  }
+  //**
   // on pipeline flushes, cause mem_npc to hold the sequential npc, which
   // will drive the W-stage npc mux
   when (mem_reg_valid && mem_reg_flush_pipe) {
-    mem_reg_sfence := false.B
-  }.elsewhen (ex_pc_valid) {
+      mem_reg_sfence := false.B
+  }.elsewhen (ex_pc_valid || ex_continue) {
     mem_ctrl := ex_ctrl
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
@@ -735,12 +753,22 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val vpu_rs0 = WireDefault(0.U)
 
 
+//zxr: allow the vector instruction already in the MEM stage to continue
+//**
+
+when(mem_ctrl.vector && !id_ctrl.vector){
+  mem_continue := true.B
+}otherwise{
+ mem_continue := false.B 
+}
+//**
+
     wb_reg_valid := !ctrl_killm
   //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
-  when (mem_pc_valid) {
+  when (mem_pc_valid || mem_continue) {
     wb_ctrl := mem_ctrl
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
@@ -859,10 +887,16 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     }
 
   //wzw:change vpu decode interface
-  io.vpu_issue.valid := ex_reg_valid && ex_ctrl.vector
-  io.vpu_issue.bits.inst := ex_reg_inst
-  io.vpu_issue.bits.rs1 := ex_rs(0)
-  io.vpu_issue.bits.rs2 := ex_rs(1)
+  //io.vpu_issue.valid := ex_reg_valid && ex_ctrl.vector
+  //io.vpu_issue.bits.inst := ex_reg_inst
+  //io.vpu_issue.bits.rs1 := ex_rs(0)
+  //io.vpu_issue.bits.rs2 := ex_rs(1)
+  
+  //zxr: issue vector instructions during the WB stage
+  io.vpu_issue.valid := wb_valid && wb_ctrl.vector
+  io.vpu_issue.bits.inst := wb_reg_inst
+  io.vpu_issue.bits.rs1 := wb_reg_rs1
+  io.vpu_issue.bits.rs2 := wb_reg_rs2
   io.vpu_issue.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
   io.vpu_issue.bits.vInfo.vstart := csr.io.vector.get.vstart
   io.vpu_issue.bits.vInfo.vma := csr.io.vector.get.vconfig.vtype.vma
@@ -1062,6 +1096,11 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
   val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
 
+  //zxr: check if there are any vector instructions in the pipeline
+  //**
+  val vector_in_pipe = ex_ctrl.vector || mem_ctrl.vector
+  //**
+
   val ctrl_stalld = {
     id_ex_hazard || id_mem_hazard || id_wb_hazard || id_sboard_hazard ||
     csr.io.singleStep && (ex_reg_valid || mem_reg_valid || wb_reg_valid) ||
@@ -1074,6 +1113,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     (id_ctrl.vector &&(!(io.vpu_issue.ready)))||(isvectorrun && !id_ctrl.vector)||
     //wzw:如果此条指令是vector指令且之前有更改csr寄存器的指令的话，将会stall住流水线
    // (ex_reg_valid || mem_reg_valid || wb_reg_valid)||
+   //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
+   //**
+   (!id_ctrl.vector && vector_in_pipe && !isvectorrun) ||
+   //**
     !clock_en ||
     id_do_fence ||
     csr.io.csr_stall ||
