@@ -1092,7 +1092,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     id_ctrl.rocc && rocc_blocked || // reduce activity while RoCC is busy
     id_ctrl.div && (!(div.io.req.ready || (div.io.resp.valid && !wb_wxd)) || div.io.req.valid) || // reduce odds of replay
     //wzw:change stall logic,because rocket will issue in ex stage
-    (id_ctrl.vector &&(!(io.vpu_issue.ready)))||(isvectorrun && !id_ctrl.vector)||
+   (isvectorrun && !id_ctrl.vector)||
    //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
    //**
    (!id_ctrl.vector && vector_in_pipe) ||
