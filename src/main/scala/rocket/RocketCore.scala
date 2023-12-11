@@ -4,6 +4,7 @@
 package freechips.rocketchip.rocket
 
 import chisel3._
+import chisel3.internal.firrtl.Verification
 import chisel3.util._
 import chisel3.withClock
 import org.chipsalliance.cde.config.Parameters
@@ -11,7 +12,9 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
+
 import scala.collection.mutable.ArrayBuffer
+import smartVector.RVUissue
 
 case class RocketCoreParams(
    /**
@@ -277,8 +280,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: 添加mem_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
    */
   val mem_reg_rs1 = Reg(Bits())
-
-
+  /**
+   * @Editors: wuzewei
+   * @Description: add for veriification
+   */
+  //val mem_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
+  //val mem_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
 
 
   val mem_br_taken = Reg(Bool())
@@ -305,18 +312,19 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: 添加wb_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
    */
   val wb_reg_rs1 = Reg(Bits())
+  /**
+   * @Editors: wuzewei
+   * @Description: add for verification
+   */
+  //val wb_reg_verif_mem_addr = coreParams.useVerif.option(Reg(Bits()))
+  //val wb_reg_verif_mem_datawr = coreParams.useVerif.option(Reg(Bits()))
+  //val wb_npc = coreParams.useVerif.option(Reg(Bits()))
 
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
 
   val take_pc_mem_wb = take_pc_wb || take_pc_mem
   val take_pc = take_pc_mem_wb
-
-  //zxr: For the pipeline control 
-  //**
-  val ex_continue = Reg(Bool())
-  val mem_continue = Reg(Bool())
-  //**
 
   // decode stage
   val ibuf = Module(new IBuf)
@@ -641,23 +649,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   mem_reg_xcpt := !ctrl_killx && ex_xcpt
   mem_reg_xcpt_interrupt := !take_pc_mem_wb && ex_reg_xcpt_interrupt
 
-  //zxr:allow the vecotr instruction already in the EX stage to continue
-  // **
-  
-  when(ex_ctrl.vector && !id_ctrl.vector){
-    ex_continue := true.B
-  }otherwise{
-    ex_continue := false.B
-  }
-  when(mem_continue){
-    ex_ctrl.vector := false.B
-  }
-  //**
+
   // on pipeline flushes, cause mem_npc to hold the sequential npc, which
   // will drive the W-stage npc mux
   when (mem_reg_valid && mem_reg_flush_pipe) {
       mem_reg_sfence := false.B
-  }.elsewhen (ex_pc_valid || ex_continue) {
+  }.elsewhen (ex_pc_valid ) {
     mem_ctrl := ex_ctrl
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
@@ -753,22 +750,13 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val vpu_rs0 = WireDefault(0.U)
 
 
-//zxr: allow the vector instruction already in the MEM stage to continue
-//**
-
-when(mem_ctrl.vector && !id_ctrl.vector){
-  mem_continue := true.B
-}otherwise{
- mem_continue := false.B 
-}
-//**
 
     wb_reg_valid := !ctrl_killm
   //TODO:如果正在执行vector指令的话需要停掉replay机制 像是miss之类的情况由vector进行多次发送进行处理 同时注意id阶段要将valid设置为false
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
-  when (mem_pc_valid || mem_continue) {
+  when (mem_pc_valid ) {
     wb_ctrl := mem_ctrl
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
@@ -792,6 +780,8 @@ when(mem_ctrl.vector && !id_ctrl.vector){
     wb_reg_hfence_g := mem_ctrl.mem_cmd === M_HFENCEG
     wb_reg_pc := mem_reg_pc
     wb_reg_wphit := mem_reg_wphit | bpu.io.bpwatch.map { bpw => (bpw.rvalid(0) && mem_reg_load) || (bpw.wvalid(0) && mem_reg_store) }
+
+
 
   }
 
@@ -878,25 +868,33 @@ when(mem_ctrl.vector && !id_ctrl.vector){
     //TODO:添加commit修改vl逻辑
     vio.set_vconfig.bits := issue_vconfig   
     vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset)
-    //wzw:change for updating vstart All vector instructions, including vset{i}vl{i}, reset the vstart CSR to zero
-    vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset)
-    vio.set_vstart.bits := Mux((wb_valid & wb_ctrl.vset),0.U,update_vstart_data)
+    //wzw:change for updating vstart
+    vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))
+    vio.set_vstart.bits := update_vstart_data
     vio.set_vxsat := 0.U
     vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
     //vio.set_vs_dirty := false.asBool
     }
 
-  //wzw:change vpu decode interface
-  //io.vpu_issue.valid := ex_reg_valid && ex_ctrl.vector
-  //io.vpu_issue.bits.inst := ex_reg_inst
-  //io.vpu_issue.bits.rs1 := ex_rs(0)
-  //io.vpu_issue.bits.rs2 := ex_rs(1)
-  
+
+//zxr: issue queue
+val vectorQueue = Module(new InsructionQueue(2))
+
+vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && (!io.vpu_issue.ready)
+vectorQueue.io.enqueueInfo.bits.rs1 := wb_reg_rs1
+vectorQueue.io.enqueueInfo.bits.rs2 := wb_reg_rs2
+vectorQueue.io.enqueueInfo.bits.inst := wb_reg_inst
+vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
+
+
   //zxr: issue vector instructions during the WB stage
-  io.vpu_issue.valid := wb_valid && wb_ctrl.vector
-  io.vpu_issue.bits.inst := wb_reg_inst
-  io.vpu_issue.bits.rs1 := wb_reg_rs1
-  io.vpu_issue.bits.rs2 := wb_reg_rs2
+ //io.vpu_issue.valid := wb_valid && wb_ctrl.vector
+  io.vpu_issue.valid := vectorQueue.io.dequeueInfo.valid || (wb_ctrl.vector && wb_reg_valid)
+  //io.vpu_issue.bits.inst := wb_reg_ins
+  io.vpu_issue.bits.inst := vectorQueue.io.dequeueInfo.bits.inst
+  io.vpu_issue.bits.rs1 := vectorQueue.io.dequeueInfo.bits.rs1
+  io.vpu_issue.bits.rs2 := vectorQueue.io.dequeueInfo.bits.rs2
+
   io.vpu_issue.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
   io.vpu_issue.bits.vInfo.vstart := csr.io.vector.get.vstart
   io.vpu_issue.bits.vInfo.vma := csr.io.vector.get.vconfig.vtype.vma
@@ -1098,7 +1096,7 @@ when(mem_ctrl.vector && !id_ctrl.vector){
 
   //zxr: check if there are any vector instructions in the pipeline
   //**
-  val vector_in_pipe = ex_ctrl.vector || mem_ctrl.vector
+  val vector_in_pipe = (ex_reg_valid && ex_ctrl.vector) || (mem_reg_valid && mem_ctrl.vector) 
   //**
 
   val ctrl_stalld = {
@@ -1111,12 +1109,10 @@ when(mem_ctrl.vector && !id_ctrl.vector){
     id_ctrl.div && (!(div.io.req.ready || (div.io.resp.valid && !wb_wxd)) || div.io.req.valid) || // reduce odds of replay
     //wzw:change stall logic,because rocket will issue in ex stage
     (id_ctrl.vector &&(!(io.vpu_issue.ready)))||(isvectorrun && !id_ctrl.vector)||
-    //wzw:如果此条指令是vector指令且之前有更改csr寄存器的指令的话，将会stall住流水线
-   // (ex_reg_valid || mem_reg_valid || wb_reg_valid)||
    //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
    //**
-   (!id_ctrl.vector && vector_in_pipe && !isvectorrun) ||
-   //**
+   (!id_ctrl.vector && vector_in_pipe) ||
+    //**
     !clock_en ||
     id_do_fence ||
     csr.io.csr_stall ||
@@ -1147,7 +1143,7 @@ when(mem_ctrl.vector && !id_ctrl.vector){
   io.ptw.sfence := io.imem.sfence
 
   ibuf.io.inst(0).ready := !ctrl_stalld
-
+  
   io.imem.btb_update.valid := mem_reg_valid && !take_pc_wb && mem_wrong_npc && (!mem_cfi || mem_cfi_taken)
   io.imem.btb_update.bits.isValid := mem_cfi
   io.imem.btb_update.bits.cfiType :=
@@ -1332,7 +1328,7 @@ if(coreParams.useVerif) {
     val wfd = wb_ctrl.wfd
     val wxd = wb_ctrl.wxd
     val has_data = wb_wen && !wb_set_sboard
-
+  
     when (t.valid && !t.exception) {
       when (wfd) {
         printf ("%d 0x%x (0x%x) f%d p%d 0xXXXXXXXXXXXXXXXX\n", t.priv, t.iaddr, t.insn, rd, rd+32.U)
@@ -1437,6 +1433,24 @@ if(coreParams.useVerif) {
     }
   }
 }
+
+
+//zxr
+class InsructionQueue(depth:Int) extends Module{
+  val io = IO(new Bundle{
+    val enqueueInfo = Flipped(Decoupled(new RVUissue)) 
+    val dequeueInfo = Decoupled(new RVUissue)
+    val cnt = Output(UInt(4.W))
+  })
+
+ val queue = Module(new Queue(new RVUissue, entries = depth))
+
+  queue.io.enq <> io.enqueueInfo
+  io.dequeueInfo <> queue.io.deq
+  io.cnt <> queue.io.count
+}
+
+ 
 
 class RegFile(n: Int, w: Int, zero: Boolean = false) {
   val rf = Mem(n, UInt(w.W))
