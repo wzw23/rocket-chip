@@ -12,7 +12,7 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
 import scala.collection.mutable.ArrayBuffer
-import smartVector.RVUissue
+
 
 case class RocketCoreParams(
    /**
@@ -862,22 +862,21 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
 
 //zxr: issue queue
-val vectorQueue = Module(new InsructionQueue(3))
+val vectorQueue = Module(new InsructionQueue(8))
 
-vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && (!io.vpu_issue.ready)
-vectorQueue.io.enqueueInfo.bits.rs1 := wb_reg_rs1
-vectorQueue.io.enqueueInfo.bits.rs2 := wb_reg_rs2
-vectorQueue.io.enqueueInfo.bits.inst := wb_reg_inst
+vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector 
+vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
+vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
+vectorQueue.io.enqueueInfo.bits.v_inst := wb_reg_inst
 vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
 
   //zxr: issue vector instructions during the WB stage
  //io.vpu_issue.valid := wb_valid && wb_ctrl.vector
-  io.vpu_issue.valid := vectorQueue.io.dequeueInfo.valid || (wb_ctrl.vector && wb_reg_valid)
-  //io.vpu_issue.bits.inst := wb_reg_ins
-  io.vpu_issue.bits.inst := vectorQueue.io.dequeueInfo.bits.inst
-  io.vpu_issue.bits.rs1 := vectorQueue.io.dequeueInfo.bits.rs1
-  io.vpu_issue.bits.rs2 := vectorQueue.io.dequeueInfo.bits.rs2
+  io.vpu_issue.valid := vectorQueue.io.dequeueInfo.valid 
+  io.vpu_issue.bits.inst := vectorQueue.io.dequeueInfo.bits.v_inst
+  io.vpu_issue.bits.rs1 := vectorQueue.io.dequeueInfo.bits.v_rs1
+  io.vpu_issue.bits.rs2 := vectorQueue.io.dequeueInfo.bits.v_rs2
 
   io.vpu_issue.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
   io.vpu_issue.bits.vInfo.vstart := csr.io.vector.get.vstart
@@ -1421,14 +1420,20 @@ if(coreParams.useVerif) {
 
 
 //zxr
+class vectorInstInfo extends Bundle{
+  val v_inst = UInt(32.W)
+  val v_rs1 = UInt(64.W)
+  val v_rs2 = UInt(64.W)
+}
+
 class InsructionQueue(depth:Int) extends Module{
   val io = IO(new Bundle{
-    val enqueueInfo = Flipped(Decoupled(new RVUissue)) 
-    val dequeueInfo = Decoupled(new RVUissue)
+    val enqueueInfo = Flipped(Decoupled(new vectorInstInfo)) 
+    val dequeueInfo = Decoupled(new vectorInstInfo)
     val cnt = Output(UInt(4.W))
   })
 
- val queue = Module(new Queue(new RVUissue, entries = depth))
+ val queue = Module(new Queue(new vectorInstInfo, entries = depth))
 
   queue.io.enq <> io.enqueueInfo
   io.dequeueInfo <> queue.io.deq
