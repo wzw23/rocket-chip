@@ -110,8 +110,10 @@ class VERINIO(implicit p: Parameters) extends CoreBundle()(p){
   val usingABLU = usingBitManip || usingBitManipCrypto
   val aluFn = if (usingABLU) new ABLUFN else new ALUFN
   val adder_in = Input(UInt())
+
   val mem_datawr_in = Input(UInt())
   val mem_npc = Input(UInt())
+
   val wb_reg_valid  =Input(Bool())
   val wb_ctrl = Input(new IntCtrlSigs(aluFn))
   val vpu_commit_vld = Input(Bool())
