@@ -9,6 +9,7 @@ import freechips.rocketchip.rocket._
 import freechips.rocketchip.util._
 //wzw add smartVector
 import smartVector._
+import smartVector.{RVUissue, RVUCommit}
 
 case object XLen extends Field[Int]
 case object MaxHartIdBits extends Field[Int]
@@ -200,5 +201,6 @@ trait HasCoreIO extends HasTileParameters {
     val vpu_issue = Decoupled(new RVUissue)
     val vpu_commit = Flipped(new RVUCommit)
     val vpu_rfdata = Input(Vec(32, UInt(128.W)))
+    val vpu_memory = Flipped(new RVUMemory)
   }
 }

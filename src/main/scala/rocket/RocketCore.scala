@@ -725,15 +725,15 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val vpu_mcause = WireDefault(0.U)
   //
   //wzw:add for decode stage,Set it to 0 for now and connect to the vpu interface later.
-  val vpu_lsu_req_valid = WireDefault(0.B)
-  val vpu_lsu_req_ld = WireDefault(0.B)
-  val vpu_lsu_req_addrs = WireDefault(0.U)
-  val vpu_lsu_req_data_width = WireDefault(0.U)
-  val vpu_lsu_st_req_data = WireDefault(0.U)
-  val vpu_lsu_waddr = WireDefault(UInt(xLen.W),0.U)
+ // val vpu_lsu_req_valid = WireDefault(0.B)
+ // val vpu_lsu_req_ld = WireDefault(0.B)
+  //val vpu_lsu_req_addrs = WireDefault(0.U)
+  //val vpu_lsu_req_data_width = WireDefault(0.U)
+  //val vpu_lsu_st_req_data = WireDefault(0.U)
+  //val vpu_lsu_waddr = WireDefault(UInt(xLen.W),0.U)
   //wzw:自己添加，是否进行符号位扩展,可能需要扩展接口
-  val vpu_lsu_signed = WireDefault(0.U)
-  val vpu_rs0 = WireDefault(0.U)
+  //val vpu_lsu_signed = WireDefault(0.U)
+  //val vpu_rs0 = WireDefault(0.U)
 
 
 
@@ -769,16 +769,17 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   }
 
+  
   val (wb_xcpt, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
     (io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst,Causes.illegal_instruction.U),
     //wzw:若是访存异常的话，将wb_cause设置为vpu传过来的异常号
     (io.vpu_commit.commit_vld&&io.vpu_commit.exception_vld,vpu_mcause),
     (wb_reg_xcpt,  wb_reg_cause),
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.st, Causes.store_guest_page_fault.U),
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.ld, Causes.load_guest_page_fault.U),
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),   
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),    
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.st, Causes.store_guest_page_fault.U),   
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.ld, Causes.load_guest_page_fault.U),    
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ae.st, Causes.store_access.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ae.ld, Causes.load_access.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ma.st, Causes.misaligned_store.U),
@@ -872,7 +873,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
 
   //zxr: issue vector instructions during the WB stage
- //io.vpu_issue.valid := wb_valid && wb_ctrl.vector
+
   io.vpu_issue.valid := vectorQueue.io.dequeueInfo.valid 
   io.vpu_issue.bits.inst := vectorQueue.io.dequeueInfo.bits.v_inst
   io.vpu_issue.bits.rs1 := vectorQueue.io.dequeueInfo.bits.v_rs1
@@ -888,7 +889,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.vpu_issue.bits.vInfo.frm := csr.io.fcsr_rm
   dontTouch(io.vpu_issue);
   dontTouch(io.vpu_commit);
-
+  dontTouch(io.vpu_memory);
   //io.decode_interface.id_resp_data := io.dmem.resp.bits.data(xLen-1,0)
   //io.decode_interface.lsu_resp_valid := io.dmem.resp.valid
   //io.decode_interface.lsu_resp_excp := io.dmem.s2_xcpt.pf.st||io.dmem.s2_xcpt.pf.ld
@@ -1158,35 +1159,74 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.fpu.dmem_resp_tag := dmem_resp_waddr
   io.fpu.keep_clock_enabled := io.ptw.customCSRs.disableCoreClockGate
 
+
+  
+
   //wzw:添加dmem访问条件
-  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(vpu_lsu_req_valid)
+  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
+  //  io.vpu_memory.req.ready   :=  io.dmem.req.ready
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
   //wzw:添加vpu_dcache_tag
-  val vpu_dcache_tag = Cat(vpu_lsu_waddr, 0.B)
+  //1
+  //val vpu_dcache_tag = Cat(io.vpu_memory.req.bits.addr, 0.B)
+
   require(coreParams.dcacheReqTagBits >= ex_dcache_tag.getWidth)
   //require(coreParams.dcacheReqTagBits >= vpu_dcache_tag.getWidth)
   //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
-  io.dmem.req.bits.tag  := Mux(vpu_lsu_req_valid,vpu_dcache_tag,ex_dcache_tag)
+
+  //io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
+  io.dmem.req.bits.tag  := ex_dcache_tag
   //wzw:添加vpu_mem_cmd
-  val vpu_mem_cmd = Mux(vpu_lsu_req_ld,M_XWR,M_XRD)
-  io.dmem.req.bits.cmd  := Mux(vpu_lsu_req_valid,vpu_mem_cmd,ex_ctrl.mem_cmd)
+  //val vpu_mem_cmd = Mux(vpu_lsu_req_ld,M_XWR,M_XRD)
+  io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
   //wzw:ex_reg_mem_size代表写的大小
-  io.dmem.req.bits.size := Mux(vpu_lsu_req_valid,vpu_lsu_req_data_width,ex_reg_mem_size)
+  //io.dmem.req.bits.size := Mux(vpu_lsu_req_valid,vpu_lsu_req_data_width,ex_reg_mem_size)
+  io.dmem.req.bits.size := ex_reg_mem_size
   //signed代表是否扩展符号
-  io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
+ // io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
+  io.dmem.req.bits.signed := !Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14))
   io.dmem.req.bits.phys := false.B
-  io.dmem.req.bits.addr := Mux(vpu_lsu_req_valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
-  io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)
-  io.dmem.req.bits.dprv := Mux(vpu_lsu_req_valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
-  io.dmem.req.bits.dv := Mux(vpu_lsu_req_valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
-  //vpu传过来的数据需要延迟一拍 传入dcache
-  val vpu_lsu_st_req_data_delay = RegEnable(vpu_lsu_st_req_data,0.U,vpu_lsu_req_valid)
-  io.dmem.s1_data.data := Mux(vpu_lsu_req_valid,vpu_lsu_st_req_data_delay ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+
+  //io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
+  io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.addr,encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
+ 
+   
+   when(io.vpu_memory.req.valid){io.dmem.req.bits.idx.foreach(_ := io.vpu_memory.req.bits.idx)}.otherwise{
+      io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)
+   }
+   
+
+//  io.dmem.req.bits.dprv := Mux(vpu_lsu_req_valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
+  io.dmem.req.bits.dprv := Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv)
+  io.dmem.req.bits.dv := Mux(io.vpu_memory.req.valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
+  //vpu传过来的数据需要延迟一拍 传入dcache 
+  
+  val vpu_lsu_st_req_data_delay = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
+   io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,vpu_lsu_st_req_data_delay ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+  // io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+  val vpu_lsu_st_req_mask_delay = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
+  when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := io.vpu_memory.req.bits.mask}
+  //io.dmem.s1_data.mask := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.mask,DontCare)
   //若是vpu出现异常的话是否添加冲刷指令?
   io.dmem.s1_kill := killm_common || mem_ldst_xcpt || fpu_kill_mem
   io.dmem.s2_kill := false.B
   // don't let D$ go to sleep if we're probably going to use it soon
   io.dmem.keep_clock_enabled := ibuf.io.inst(0).valid && id_ctrl.mem && !csr.io.csr_stall
+
+  //zxr: R -> V
+  io.vpu_memory.resp.bits.idx :=io.dmem.resp.bits.idx.getOrElse(0.U)
+  io.vpu_memory.resp.bits.data := io.dmem.resp.bits.data
+  io.vpu_memory.resp.bits.mask := io.dmem.resp.bits.mask
+  io.vpu_memory.resp.bits.nack := io.dmem.s2_nack
+  io.vpu_memory.resp.bits.has_data := io.dmem.resp.bits.has_data
+  io.vpu_memory.resp.valid := io.dmem.resp.valid
+
+  //zxr:exception to VPU
+  io.vpu_memory.xcpt.ma := io.dmem.s2_xcpt.ma
+  io.vpu_memory.xcpt.pf := io.dmem.s2_xcpt.pf
+  io.vpu_memory.xcpt.gf := io.dmem.s2_xcpt.gf
+  io.vpu_memory.xcpt.ae := io.dmem.s2_xcpt.ae
+
 
   io.rocc.cmd.valid := wb_reg_valid && wb_ctrl.rocc && !replay_wb_common
   io.rocc.exception := wb_xcpt && csr.io.status.xs.orR
