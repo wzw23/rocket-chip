@@ -1164,24 +1164,22 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   //wzw:添加dmem访问条件
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
-  //  io.vpu_memory.req.ready   :=  io.dmem.req.ready
+  io.vpu_memory.req.ready := io.dmem.req.ready
+
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
   //wzw:添加vpu_dcache_tag
-  //1
-  //val vpu_dcache_tag = Cat(io.vpu_memory.req.bits.addr, 0.B)
+  val vpu_dcache_tag = Cat(io.vpu_memory.req.bits.addr, 0.B)
 
   require(coreParams.dcacheReqTagBits >= ex_dcache_tag.getWidth)
   //require(coreParams.dcacheReqTagBits >= vpu_dcache_tag.getWidth)
   //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
 
-  //io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
-  io.dmem.req.bits.tag  := ex_dcache_tag
-  //wzw:添加vpu_mem_cmd
-  //val vpu_mem_cmd = Mux(vpu_lsu_req_ld,M_XWR,M_XRD)
+  io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
+  
+  //zxr:add the cmd for request of vpu
   io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
-  //wzw:ex_reg_mem_size代表写的大小
-  //io.dmem.req.bits.size := Mux(vpu_lsu_req_valid,vpu_lsu_req_data_width,ex_reg_mem_size)
-  io.dmem.req.bits.size := ex_reg_mem_size
+  //zxr:add for the size of v inst
+  io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,64.U,ex_reg_mem_size)
   //signed代表是否扩展符号
  // io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
   io.dmem.req.bits.signed := !Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14))
@@ -1190,23 +1188,22 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
   io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.addr,encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
  
-   
-   when(io.vpu_memory.req.valid){io.dmem.req.bits.idx.foreach(_ := io.vpu_memory.req.bits.idx)}.otherwise{
-      io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)
-   }
+  io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)  
+  //zxr: 
+  io.dmem.s1_vpu_idx := io.vpu_memory.req.bits.idx
    
 
-//  io.dmem.req.bits.dprv := Mux(vpu_lsu_req_valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
-  io.dmem.req.bits.dprv := Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv)
+  io.dmem.req.bits.dprv := Mux(io.vpu_memory.req.valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
   io.dmem.req.bits.dv := Mux(io.vpu_memory.req.valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
-  //vpu传过来的数据需要延迟一拍 传入dcache 
   
-  val vpu_lsu_st_req_data_delay = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
-   io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,vpu_lsu_st_req_data_delay ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+  
+  //vpu传过来的数据需要延迟一拍 传入dcache 
+  val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
+   io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,s1_req_vpu_data ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
   // io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  val vpu_lsu_st_req_mask_delay = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
-  when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := io.vpu_memory.req.bits.mask}
-  //io.dmem.s1_data.mask := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.mask,DontCare)
+  val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
+  when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
+  
   //若是vpu出现异常的话是否添加冲刷指令?
   io.dmem.s1_kill := killm_common || mem_ldst_xcpt || fpu_kill_mem
   io.dmem.s2_kill := false.B
@@ -1214,7 +1211,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.keep_clock_enabled := ibuf.io.inst(0).valid && id_ctrl.mem && !csr.io.csr_stall
 
   //zxr: R -> V
-  io.vpu_memory.resp.bits.idx :=io.dmem.resp.bits.idx.getOrElse(0.U)
+  io.vpu_memory.resp.bits.idx  := io.dmem.s2_vpu_idx
   io.vpu_memory.resp.bits.data := io.dmem.resp.bits.data
   io.vpu_memory.resp.bits.mask := io.dmem.resp.bits.mask
   io.vpu_memory.resp.bits.nack := io.dmem.s2_nack

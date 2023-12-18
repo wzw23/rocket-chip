@@ -13,6 +13,12 @@ class HellaCacheArbiter(n: Int)(implicit p: Parameters) extends Module
     val requestor = Flipped(Vec(n, new HellaCacheIO))
     val mem = new HellaCacheIO
   })
+  
+  //zxr:
+  io.requestor.foreach{req =>
+    req.s2_vpu_idx := 0.U
+  }
+  io.mem.s1_vpu_idx := 0.U
 
   if (n == 1) {
     io.mem <> io.requestor.head
@@ -25,8 +31,7 @@ class HellaCacheArbiter(n: Int)(implicit p: Parameters) extends Module
     io.mem.req.valid := io.requestor.map(_.req.valid).reduce(_||_)
     io.requestor(0).req.ready := io.mem.req.ready
     for (i <- 1 until n)
-      io.requestor(i).req.ready := io.requestor(i-1).req.ready && !io.requestor(i-1).req.valid
-
+      io.requestor(i).req.ready := io.requestor(i-1).req.ready && !io.requestor(i-1).req.valid    
     for (i <- n-1 to 0 by -1) {
       val req = io.requestor(i).req
       def connect_s0() = {
@@ -51,7 +56,7 @@ class HellaCacheArbiter(n: Int)(implicit p: Parameters) extends Module
         when (s1_id === i.U) { connect_s1() }
         when (s2_id === i.U) { connect_s2() }
       }
-    }
+          }
 
     io.mem.uncached_resp.foreach(_.ready := false.B)
 
