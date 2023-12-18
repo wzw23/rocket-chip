@@ -171,10 +171,11 @@ class VERINIO(implicit p: Parameters) extends CoreBundle()(p){
   val fpu_sboard_clra = Input(UInt())
 }
 
-class QueueSigal (implicit p: Parameters) extends CoreBundle()(p) {
+class UvmQueueSignal (implicit p: Parameters) extends CoreBundle()(p) {
     val prePc = UInt(xLen.W)
     val currPc = UInt(xLen.W)
     val insn = UInt(xLen.W)
+    val minstret = UInt(xLen.W)
 }
 
 class UvmVerification(implicit p:Parameters) extends CoreModule{
@@ -195,11 +196,11 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   //
   class MyQueue extends Module {
     val io = IO(new Bundle {
-      val in = Flipped(Decoupled(new QueueSigal))
-      val out = Decoupled(new QueueSigal)
+      val in = Flipped(Decoupled(new UvmQueueSignal))
+      val out = Decoupled(new UvmQueueSignal)
       val cnt = Output(UInt(4.W))
     })
-    val q = Module(new Queue(new QueueSigal,entries = 8))
+    val q = Module(new Queue(new UvmQueueSignal,entries = 8))
     q.io.enq <> io.in
     io.out <> q.io.deq
     io.cnt <> q.io.count
@@ -207,15 +208,17 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   val wb_insn ={if (usingCompressed) Cat(Mux(io.uvm_in.wb_reg_raw_inst(1, 0).andR, (io.uvm_in.wb_reg_inst) >> 16, 0.U), io.uvm_in.wb_reg_raw_inst(15, 0)) else io.uvm_in.wb_reg_inst}
   // add to store necessary vpu signal
   val q = Module(new MyQueue)
-  q.io.in.bits.prePc := io.uvm_in.wb_reg_pc
-  q.io.in.bits.currPc := wb_npc
-  q.io.in.bits.insn := wb_insn
-  q.io.in.valid := io.uvm_in.wb_reg_valid & io.uvm_in.wb_ctrl.vector
-  q.io.out.ready := io.uvm_out.commit_valid
+  q.io.in.bits.prePc := RegNext(io.uvm_in.wb_reg_pc)
+  q.io.in.bits.currPc := RegNext(wb_npc)
+  q.io.in.bits.insn := RegNext(wb_insn)
+  q.io.in.bits.minstret := (io.uvm_in.minstret)
+  q.io.in.valid := RegNext(io.uvm_in.wb_reg_valid & io.uvm_in.wb_ctrl.vector)
+  q.io.out.ready := io.uvm_in.commit_vld
   //
   io.uvm_out.commit_valid := RegEnable(((io.uvm_in.wb_reg_valid)&(~io.uvm_in.wb_ctrl.vector))||io.uvm_in.vpu_commit_vld , 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_prevPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.prePc,io.uvm_in.wb_reg_pc), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_currPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.currPc,wb_npc), 0.U, coreParams.useVerif.B)
+  io.uvm_out.csr_minstretWr := Mux(RegNext(q.io.out.fire),RegNext(q.io.out.bits.minstret),io.uvm_in.minstret)
   io.uvm_out.commit_order := 0.U
   io.uvm_out.commit_insn := RegEnable(Mux(q.io.out.fire,q.io.out.bits.insn,wb_insn), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_fused := 0.U
@@ -286,7 +289,6 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   io.uvm_out.csr_mscratchWr := io.uvm_in.mscratch
   io.uvm_out.csr_midelegWr := io.uvm_in.mideleg
   io.uvm_out.csr_medelegWr := io.uvm_in.medeleg
-  io.uvm_out.csr_minstretWr := io.uvm_in.minstret
   io.uvm_out.csr_sstatusWr := io.uvm_in.sstatus.asUInt
   io.uvm_out.csr_sepcWr := io.uvm_in.sepc
   io.uvm_out.csr_stvalWr := io.uvm_in.stval
