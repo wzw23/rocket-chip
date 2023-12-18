@@ -1164,7 +1164,9 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   //wzw:添加dmem访问条件
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
-  io.vpu_memory.req.ready := io.dmem.req.ready
+ val intermediateReady = RegNext(io.dmem.req.ready)
+  io.vpu_memory.req.ready := intermediateReady
+ // io.vpu_memory.req.ready := io.dmem.req.ready
 
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
   //wzw:添加vpu_dcache_tag
