@@ -1162,11 +1162,12 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   
 
-  //wzw:添加dmem访问条件
-  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
- val intermediateReady = RegNext(io.dmem.req.ready)
-  io.vpu_memory.req.ready := intermediateReady
- // io.vpu_memory.req.ready := io.dmem.req.ready
+
+  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.fire)
+  //val intermediateReady = RegNext(io.dmem.req.ready)
+  // io.vpu_memory.req.ready := intermediateReady
+  //io.vpu_memory.req.ready := true.B
+  io.vpu_memory.req.ready := io.dmem.req.ready
 
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
   //wzw:添加vpu_dcache_tag
@@ -1176,8 +1177,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //require(coreParams.dcacheReqTagBits >= vpu_dcache_tag.getWidth)
   //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
 
-  io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
-  
+  //io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
+  io.dmem.req.bits.tag  := ex_dcache_tag
   //zxr:add the cmd for request of vpu
   io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
   //zxr:add for the size of v inst
@@ -1207,7 +1208,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
   
   //若是vpu出现异常的话是否添加冲刷指令?
-  io.dmem.s1_kill := killm_common || mem_ldst_xcpt || fpu_kill_mem
+  val s1_delay = RegNext(io.vpu_memory.req.fire,0.U)
+  io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !s1_delay
   io.dmem.s2_kill := false.B
   // don't let D$ go to sleep if we're probably going to use it soon
   io.dmem.keep_clock_enabled := ibuf.io.inst(0).valid && id_ctrl.mem && !csr.io.csr_stall
