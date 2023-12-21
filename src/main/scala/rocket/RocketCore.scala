@@ -1163,7 +1163,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   
 
 
-  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.fire)
+  io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
   //val intermediateReady = RegNext(io.dmem.req.ready)
   // io.vpu_memory.req.ready := intermediateReady
   
