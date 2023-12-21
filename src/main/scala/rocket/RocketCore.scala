@@ -1166,7 +1166,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.fire)
   //val intermediateReady = RegNext(io.dmem.req.ready)
   // io.vpu_memory.req.ready := intermediateReady
-  //io.vpu_memory.req.ready := true.B
+  
   io.vpu_memory.req.ready := io.dmem.req.ready
 
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
@@ -1189,12 +1189,13 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.req.bits.phys := false.B
 
   //io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
-  io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.addr,encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
+  io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(io.vpu_memory.req.bits.addr, alu.io.adder_out),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
  
   io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)  
   //zxr: 
+  
   io.dmem.s1_vpu_idx := io.vpu_memory.req.bits.idx
-   
+   dontTouch(io.dmem);
 
   io.dmem.req.bits.dprv := Mux(io.vpu_memory.req.valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
   io.dmem.req.bits.dv := Mux(io.vpu_memory.req.valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
