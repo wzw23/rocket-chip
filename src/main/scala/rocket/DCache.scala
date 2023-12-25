@@ -173,9 +173,6 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   val s1_req = RegEnable(s0_req, s0_clk_en)
   val s1_vaddr = Cat(s1_req.idx.getOrElse(s1_req.addr) >> tagLSB, s1_req.addr(tagLSB-1, 0))
 
-  //zxr
-  val s1_vpu_idx = RegNext(io.cpu.s1_vpu_idx, false.B)
-
   val s0_tlb_req = WireInit(tlb_port.req.bits)
   when (!tlb_port.req.fire()) {
     s0_tlb_req.passthrough := s0_req.phys
@@ -211,8 +208,6 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   val inWriteback = release_state.isOneOf(s_voluntary_writeback, s_probe_rep_dirty)
   val releaseWay = Wire(UInt())
   io.cpu.req.ready := (release_state === s_ready) && !cached_grant_wait && !s1_nack
-
-  
 
   // I/O MSHRs
   val uncachedInFlight = RegInit(VecInit(Seq.fill(maxUncachedInFlight)(false.B)))
@@ -324,20 +319,12 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   val s2_tlb_xcpt = Reg(chiselTypeOf(tlb.io.resp))
   val s2_pma = Reg(chiselTypeOf(tlb.io.resp))
   val s2_uncached_resp_addr = Reg(chiselTypeOf(s2_req.addr)) // should be DCE'd in synthesis
-  
-  //zxr: 
-  val s2_vpu_idx = Reg(chiselTypeOf(io.cpu.s2_vpu_idx))
-
   when (s1_valid_not_nacked || s1_flush_valid) {
     s2_req := s1_req
     s2_req.addr := s1_paddr
     s2_tlb_xcpt := tlb.io.resp
     s2_pma := Mux(s1_tlb_req_valid, pma_checker.io.resp, tlb.io.resp)
-  //zxr
-    s2_vpu_idx := s1_vpu_idx
-
   }
-
   val s2_vaddr = Cat(RegEnable(s1_vaddr, s1_valid_not_nacked || s1_flush_valid) >> tagLSB, s2_req.addr(tagLSB-1, 0))
   val s2_read = isRead(s2_req.cmd)
   val s2_write = isWrite(s2_req.cmd)
@@ -911,9 +898,6 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   io.cpu.s2_paddr := s2_req.addr
   io.cpu.s2_gpa := s2_tlb_xcpt.gpa
   io.cpu.s2_gpa_is_pte := s2_tlb_xcpt.gpa_is_pte
-
-  //zxr: 
-  io.cpu.s2_vpu_idx := s2_vpu_idx
 
   // report whether there are any outstanding accesses.  disregard any
   // slave-port accesses, since they don't affect local memory ordering.

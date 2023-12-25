@@ -447,9 +447,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_rs = for (i <- 0 until id_raddr.size)
     yield Mux(ex_reg_rs_bypass(i), bypass_mux(ex_reg_rs_lsb(i)), Cat(ex_reg_rs_msb(i), ex_reg_rs_lsb(i)))
   val ex_imm = ImmGen(ex_ctrl.sel_imm, ex_reg_inst)
-
-  wb_ctrl
-  val ex_op1 = MuxLookup(ex_ctrl.sel_alu1, 0.S, Seq(  
+  val ex_op1 = MuxLookup(ex_ctrl.sel_alu1, 0.S, Seq(
     A1_RS1 -> ex_rs(0).asSInt,
     A1_PC -> ex_reg_pc.asSInt))
   val ex_op2 = MuxLookup(ex_ctrl.sel_alu2, 0.S, Seq(
@@ -771,17 +769,16 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   }
 
-  
   val (wb_xcpt, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
     (io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst,Causes.illegal_instruction.U),
     //wzw:若是访存异常的话，将wb_cause设置为vpu传过来的异常号
     (io.vpu_commit.commit_vld&&io.vpu_commit.exception_vld,vpu_mcause),
     (wb_reg_xcpt,  wb_reg_cause),
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),   
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),    
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.st, Causes.store_guest_page_fault.U),   
-    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.ld, Causes.load_guest_page_fault.U),    
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.st, Causes.store_guest_page_fault.U),
+    (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.gf.ld, Causes.load_guest_page_fault.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ae.st, Causes.store_access.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ae.ld, Causes.load_access.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ma.st, Causes.misaligned_store.U),
@@ -815,7 +812,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val id_set_sboard = id_ctrl.vector
   val replay_wb_common = (io.dmem.s2_nack && !vinst_accessing )|| wb_reg_replay
   val replay_wb_rocc = wb_reg_valid && wb_ctrl.rocc && !io.rocc.cmd.ready
-  
   val replay_wb = replay_wb_common || replay_wb_rocc
   take_pc_wb := replay_wb || wb_xcpt || csr.io.eret || wb_reg_flush_pipe
 
@@ -1167,26 +1163,22 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.fpu.dmem_resp_tag := dmem_resp_waddr
   io.fpu.keep_clock_enabled := io.ptw.customCSRs.disableCoreClockGate
 
-
-  
-
-// 
+//添加dmem访存条件
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
   io.vpu_memory.req.ready := io.dmem.req.ready
 
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
   //wzw:添加vpu_dcache_tag
   val vpu_dcache_tag = Cat(io.vpu_memory.req.bits.addr, 0.B)
-
   require(coreParams.dcacheReqTagBits >= ex_dcache_tag.getWidth)
   //require(coreParams.dcacheReqTagBits >= vpu_dcache_tag.getWidth)
   //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
-
   //io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
   io.dmem.req.bits.tag  := ex_dcache_tag
   //zxr:add the cmd for request of vpu
   io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
   //zxr:add for the size of v inst
+  //TODO: there may me error
   io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,64.U,ex_reg_mem_size)
   //signed代表是否扩展符号
  // io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
@@ -1230,9 +1222,6 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   // when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
   
   //若是vpu出现异常的话是否添加冲刷指令?
-
- 
-  
   io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !vinst_accessing
   io.dmem.s2_kill := false.B
   // don't let D$ go to sleep if we're probably going to use it soon
