@@ -447,7 +447,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_rs = for (i <- 0 until id_raddr.size)
     yield Mux(ex_reg_rs_bypass(i), bypass_mux(ex_reg_rs_lsb(i)), Cat(ex_reg_rs_msb(i), ex_reg_rs_lsb(i)))
   val ex_imm = ImmGen(ex_ctrl.sel_imm, ex_reg_inst)
-  val ex_op1 = MuxLookup(ex_ctrl.sel_alu1, 0.S, Seq(
+
+  wb_ctrl
+  val ex_op1 = MuxLookup(ex_ctrl.sel_alu1, 0.S, Seq(  
     A1_RS1 -> ex_rs(0).asSInt,
     A1_PC -> ex_reg_pc.asSInt))
   val ex_op2 = MuxLookup(ex_ctrl.sel_alu2, 0.S, Seq(
@@ -800,14 +802,20 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     (Causes.load_guest_page_fault, "LOAD_GUEST_PAGE_FAULT"),
   ) else Nil)
   coverExceptions(wb_xcpt, wb_cause, "WRITEBACK", wbCoverCauses)
-
+ //zxr:
+ val s1_vinst_accessing = RegNext(io.vpu_memory.req.fire,false.B)
+ val s2_vinst_accessing = RegNext(s1_vinst_accessing,false.B)
+ val vinst_accessing = io.vpu_memory.req.fire | s1_vinst_accessing | s2_vinst_accessing 
+ 
+  
   val wb_pc_valid = wb_reg_valid || wb_reg_replay || wb_reg_xcpt
   val wb_wxd = wb_reg_valid && wb_ctrl.wxd
   val wb_set_sboard = wb_ctrl.div || wb_dcache_miss || wb_ctrl.rocc
     //wzw 防止vpu产生的写后读问题
   val id_set_sboard = id_ctrl.vector
-  val replay_wb_common = io.dmem.s2_nack || wb_reg_replay
+  val replay_wb_common = (io.dmem.s2_nack && !vinst_accessing )|| wb_reg_replay
   val replay_wb_rocc = wb_reg_valid && wb_ctrl.rocc && !io.rocc.cmd.ready
+  
   val replay_wb = replay_wb_common || replay_wb_rocc
   take_pc_wb := replay_wb || wb_xcpt || csr.io.eret || wb_reg_flush_pipe
 
@@ -1162,11 +1170,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   
 
-
+// 
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
-  //val intermediateReady = RegNext(io.dmem.req.ready)
-  // io.vpu_memory.req.ready := intermediateReady
-  
   io.vpu_memory.req.ready := io.dmem.req.ready
 
   val ex_dcache_tag = Cat(ex_waddr, ex_ctrl.fp)
@@ -1185,17 +1190,33 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,64.U,ex_reg_mem_size)
   //signed代表是否扩展符号
  // io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
-  io.dmem.req.bits.signed := !Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14))
+  io.dmem.req.bits.signed :=Mux(io.vpu_memory.req.valid,false.B,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
   io.dmem.req.bits.phys := false.B
 
   //io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
-  io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(io.vpu_memory.req.bits.addr, alu.io.adder_out),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
+  io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(io.vpu_memory.req.bits.addr, io.vpu_memory.req.bits.addr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
  
   io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)  
-  //zxr: 
   
-  io.dmem.s1_vpu_idx := io.vpu_memory.req.bits.idx
-   dontTouch(io.dmem);
+  
+
+
+
+  //zxr: 
+  // val idxQueue = Module(new InstructionIdxQueue(16))
+
+  // idxQueue.io.enqueueInfo.valid := io.vpu_memory.req.valid
+  // idxQueue.io.enqueueInfo.bits.idx := io.vpu_memory.req.bits.idx
+
+  // io.vpu_memory.resp.bits.idx := idxQueue.io.dequeueInfo.bits.idx 
+  // io.vpu_memory.resp.valid := idxQueue.io.dequeueInfo.valid 
+  // idxQueue.io.dequeueInfo.ready := io.vpu_memory.resp.valid || io.vpu_memory.resp.bits.nack || io.vpu_memory.xcpt.asUInt.orR
+
+  val s2_idx = RegNext(RegNext(io.vpu_memory.req.bits.idx,false.B))
+  
+  io.vpu_memory.resp.bits.idx := s2_idx
+   
+  dontTouch(io.dmem);
 
   io.dmem.req.bits.dprv := Mux(io.vpu_memory.req.valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
   io.dmem.req.bits.dv := Mux(io.vpu_memory.req.valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
@@ -1205,23 +1226,26 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
    io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,s1_req_vpu_data ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
   // io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
-  when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
+  //val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
+  // when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
   
   //若是vpu出现异常的话是否添加冲刷指令?
-  val s1_delay = RegNext(io.vpu_memory.req.fire,0.U)
-  io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !s1_delay
+
+ 
+  
+  io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !vinst_accessing
   io.dmem.s2_kill := false.B
   // don't let D$ go to sleep if we're probably going to use it soon
   io.dmem.keep_clock_enabled := ibuf.io.inst(0).valid && id_ctrl.mem && !csr.io.csr_stall
 
   //zxr: R -> V
-  io.vpu_memory.resp.bits.idx  := io.dmem.s2_vpu_idx
+
   io.vpu_memory.resp.bits.data := io.dmem.resp.bits.data
   io.vpu_memory.resp.bits.mask := io.dmem.resp.bits.mask
   io.vpu_memory.resp.bits.nack := io.dmem.s2_nack
   io.vpu_memory.resp.bits.has_data := io.dmem.resp.bits.has_data
   io.vpu_memory.resp.valid := io.dmem.resp.valid
+
 
   //zxr:exception to VPU
   io.vpu_memory.xcpt.ma := io.dmem.s2_xcpt.ma
@@ -1481,6 +1505,24 @@ class InsructionQueue(depth:Int) extends Module{
   io.dequeueInfo <> queue.io.deq
   io.cnt <> queue.io.count
 }
+
+//zxr:
+// class InstructionIdxQueue(depth: Int) extends Module {
+//   class idxInfo extends Bundle{
+//     val idx = UInt(4.W)
+//   }
+//    val io = IO(new Bundle{
+//      val enqueueInfo = Flipped(Decoupled(new idxInfo))
+//      val dequeueInfo = Decoupled(new idxInfo)
+//      val cnt = Output(UInt(4.W))
+//   })
+
+//    val queue = Module(new Queue(new idxInfo, entries = depth))
+
+//   queue.io.enq <> io.enqueueInfo
+//   io.dequeueInfo <> queue.io.deq
+//   io.cnt <> queue.io.count
+// }
 
  
 
