@@ -723,18 +723,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   //add exception and pc interface
   val vpu_pc = WireDefault(0.U)
   val vpu_mcause = WireDefault(0.U)
-  //
-  //wzw:add for decode stage,Set it to 0 for now and connect to the vpu interface later.
- // val vpu_lsu_req_valid = WireDefault(0.B)
- // val vpu_lsu_req_ld = WireDefault(0.B)
-  //val vpu_lsu_req_addrs = WireDefault(0.U)
-  //val vpu_lsu_req_data_width = WireDefault(0.U)
-  //val vpu_lsu_st_req_data = WireDefault(0.U)
-  //val vpu_lsu_waddr = WireDefault(UInt(xLen.W),0.U)
-  //wzw:自己添加，是否进行符号位扩展,可能需要扩展接口
-  //val vpu_lsu_signed = WireDefault(0.U)
-  //val vpu_rs0 = WireDefault(0.U)
-
 
 
     wb_reg_valid := !ctrl_killm
@@ -1178,8 +1166,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //zxr:add the cmd for request of vpu
   io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
   //zxr:add for the size of v inst
-  //TODO: there may me error
-  io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,64.U,ex_reg_mem_size)
+  io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,3.U,ex_reg_mem_size)
   //signed代表是否扩展符号
  // io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
   io.dmem.req.bits.signed :=Mux(io.vpu_memory.req.valid,false.B,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
@@ -1190,20 +1177,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
  
   io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)  
   
-  
-
-
-
-  //zxr: 
-  // val idxQueue = Module(new InstructionIdxQueue(16))
-
-  // idxQueue.io.enqueueInfo.valid := io.vpu_memory.req.valid
-  // idxQueue.io.enqueueInfo.bits.idx := io.vpu_memory.req.bits.idx
-
-  // io.vpu_memory.resp.bits.idx := idxQueue.io.dequeueInfo.bits.idx 
-  // io.vpu_memory.resp.valid := idxQueue.io.dequeueInfo.valid 
-  // idxQueue.io.dequeueInfo.ready := io.vpu_memory.resp.valid || io.vpu_memory.resp.bits.nack || io.vpu_memory.xcpt.asUInt.orR
-
+// zxr: idx of ld/st queue for vector instruction
   val s2_idx = RegNext(RegNext(io.vpu_memory.req.bits.idx,false.B))
   
   io.vpu_memory.resp.bits.idx := s2_idx
