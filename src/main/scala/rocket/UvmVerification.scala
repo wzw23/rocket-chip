@@ -213,7 +213,7 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   q.io.in.bits.insn := RegNext(wb_insn)
   q.io.in.bits.minstret := (io.uvm_in.minstret)
   q.io.in.valid := RegNext(io.uvm_in.wb_reg_valid & io.uvm_in.wb_ctrl.vector)
-  q.io.out.ready := io.uvm_in.commit_vld
+  q.io.out.ready := io.uvm_in.vpu_commit_vld
   //
   io.uvm_out.commit_valid := RegEnable(((io.uvm_in.wb_reg_valid)&(~io.uvm_in.wb_ctrl.vector))||io.uvm_in.vpu_commit_vld , 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_prevPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.prePc,io.uvm_in.wb_reg_pc), 0.U, coreParams.useVerif.B)

@@ -173,10 +173,6 @@ class HellaCacheIO(implicit p: Parameters) extends CoreBundle()(p) {
   val s2_uncached = Input(Bool()) // advisory signal that the access is MMIO
   val s2_paddr = Input(UInt(paddrBits.W)) // translated address
 
-//zxr: add for vpu idx
-  val s1_vpu_idx = Output(UInt(4.W))
-  val s2_vpu_idx = Input(UInt(4.W))
-
   val resp = Flipped(Valid(new HellaCacheResp))
   val replay_next = Input(Bool())
   val s2_xcpt = Input(new HellaCacheExceptions)
