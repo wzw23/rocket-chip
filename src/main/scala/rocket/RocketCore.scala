@@ -742,8 +742,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
      * @Editors: wuzewei
      * @Description: x[rs1]
      */
-    wb_reg_rs1:=mem_reg_rs1
-
+    wb_reg_rs1 := mem_reg_rs1
+    wb_reg_rs2 := mem_reg_rs2
 
     wb_reg_cause := mem_cause
     wb_reg_inst := mem_reg_inst
@@ -1169,6 +1169,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,3.U,ex_reg_mem_size)
   //signed代表是否扩展符号
  // io.dmem.req.bits.signed := Mux(vpu_lsu_req_valid,vpu_lsu_signed,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
+ 
   io.dmem.req.bits.signed :=Mux(io.vpu_memory.req.valid,false.B,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
   io.dmem.req.bits.phys := false.B
 
@@ -1468,25 +1469,6 @@ class InsructionQueue(depth:Int) extends Module{
   io.dequeueInfo <> queue.io.deq
   io.cnt <> queue.io.count
 }
-
-//zxr:
-// class InstructionIdxQueue(depth: Int) extends Module {
-//   class idxInfo extends Bundle{
-//     val idx = UInt(4.W)
-//   }
-//    val io = IO(new Bundle{
-//      val enqueueInfo = Flipped(Decoupled(new idxInfo))
-//      val dequeueInfo = Decoupled(new idxInfo)
-//      val cnt = Output(UInt(4.W))
-//   })
-
-//    val queue = Module(new Queue(new idxInfo, entries = depth))
-
-//   queue.io.enq <> io.enqueueInfo
-//   io.dequeueInfo <> queue.io.deq
-//   io.cnt <> queue.io.count
-// }
-
  
 
 class RegFile(n: Int, w: Int, zero: Boolean = false) {
