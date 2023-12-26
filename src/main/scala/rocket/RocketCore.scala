@@ -670,9 +670,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     ))
     mem_br_taken := alu.io.cmp_out
 
-    when (ex_ctrl.rxs2 && (ex_ctrl.mem || ex_ctrl.rocc || ex_sfence)) {
+    when (ex_ctrl.rxs2 && (ex_ctrl.mem || ex_ctrl.rocc || ex_sfence) || ex_ctrl.vector ) {
       val size = Mux(ex_ctrl.rocc, log2Ceil(xLen/8).U, ex_reg_mem_size)
-      mem_reg_rs2 := new StoreGen(size, 0.U, ex_rs(1), coreDataBytes).data
+      //zxr: add for issuing vector instruction in wb stage
+      mem_reg_rs2 := Mux(ex_ctrl.vector,ex_rs(1).asUInt,(new StoreGen(size, 0.U, ex_rs(1), coreDataBytes).data)) 
     }
      /**
      * @Editors: wuzewei
@@ -735,7 +736,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
       Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
-    when (mem_ctrl.rocc || mem_reg_sfence) {
+   //zxr: add for transfering rs2 to wb stage
+    when (mem_ctrl.rocc || mem_reg_sfence || mem_ctrl.vector) {
       wb_reg_rs2 := mem_reg_rs2
     }
     /**
@@ -743,7 +745,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
      * @Description: x[rs1]
      */
     wb_reg_rs1 := mem_reg_rs1
-    wb_reg_rs2 := mem_reg_rs2
 
     wb_reg_cause := mem_cause
     wb_reg_inst := mem_reg_inst
