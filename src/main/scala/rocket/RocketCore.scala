@@ -793,6 +793,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
  val s2_vinst_accessing = RegNext(s1_vinst_accessing,false.B)
  val vinst_accessing = io.vpu_memory.req.fire | s1_vinst_accessing | s2_vinst_accessing 
  
+ 
   
   val wb_pc_valid = wb_reg_valid || wb_reg_replay || wb_reg_xcpt
   val wb_wxd = wb_reg_valid && wb_ctrl.wxd
@@ -1205,7 +1206,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.vpu_memory.resp.bits.mask := io.dmem.resp.bits.mask
   io.vpu_memory.resp.bits.nack := io.dmem.s2_nack
   io.vpu_memory.resp.bits.has_data := io.dmem.resp.bits.has_data
-  io.vpu_memory.resp.valid := io.dmem.resp.valid
+  io.vpu_memory.resp.valid := Mux(vinst_accessing,io.dmem.resp.valid,0.B)
 
 
   //zxr:exception to VPU
