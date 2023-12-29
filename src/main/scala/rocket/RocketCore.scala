@@ -1162,8 +1162,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   require(coreParams.dcacheReqTagBits >= ex_dcache_tag.getWidth)
   //require(coreParams.dcacheReqTagBits >= vpu_dcache_tag.getWidth)
   //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
-  //io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
-  io.dmem.req.bits.tag  := ex_dcache_tag
+  io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
   //zxr:add the cmd for request of vpu
   io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
   //zxr:add for the size of v inst
@@ -1174,14 +1173,12 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.req.bits.signed :=Mux(io.vpu_memory.req.valid,false.B,!Mux(ex_reg_hls, ex_reg_inst(20), ex_reg_inst(14)))
   io.dmem.req.bits.phys := false.B
 
-  //io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(vpu_rs0, vpu_lsu_waddr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
   io.dmem.req.bits.addr := Mux(io.vpu_memory.req.valid,encodeVirtualAddress(io.vpu_memory.req.bits.addr, io.vpu_memory.req.bits.addr),encodeVirtualAddress(ex_rs(0), alu.io.adder_out))
  
   io.dmem.req.bits.idx.foreach(_ := io.dmem.req.bits.addr)  
   
 // zxr: idx of ld/st queue for vector instruction
   val s2_idx = RegNext(RegNext(io.vpu_memory.req.bits.idx,false.B))
-  
   io.vpu_memory.resp.bits.idx := s2_idx
    
   dontTouch(io.dmem);
@@ -1194,8 +1191,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
    io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,s1_req_vpu_data ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
   // io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  //val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
-  // when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
+  val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
+  when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
   
   //若是vpu出现异常的话是否添加冲刷指令?
   io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !vinst_accessing
@@ -1204,7 +1201,6 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.keep_clock_enabled := ibuf.io.inst(0).valid && id_ctrl.mem && !csr.io.csr_stall
 
   //zxr: R -> V
-
   io.vpu_memory.resp.bits.data := io.dmem.resp.bits.data
   io.vpu_memory.resp.bits.mask := io.dmem.resp.bits.mask
   io.vpu_memory.resp.bits.nack := io.dmem.s2_nack
