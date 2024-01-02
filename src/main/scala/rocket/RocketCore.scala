@@ -1165,7 +1165,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //wzw:tag 用来传递waddr信息，在此更改条件,添加vpu访存信息。
   io.dmem.req.bits.tag  := Mux(io.vpu_memory.req.valid,vpu_dcache_tag,ex_dcache_tag)
   //zxr:add the cmd for request of vpu
-  io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.cmd,ex_ctrl.mem_cmd)
+  val vpu_memory_cmd = Mux(io.vpu_memory.req.bits.cmd,M_PWR,M_XRD)
+  io.dmem.req.bits.cmd  := Mux(io.vpu_memory.req.valid,vpu_memory_cmd,ex_ctrl.mem_cmd)
   //zxr:add for the size of v inst
   io.dmem.req.bits.size := Mux(io.vpu_memory.req.valid,3.U,ex_reg_mem_size)
   //signed代表是否扩展符号
@@ -1189,11 +1190,12 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   
   
   //vpu传过来的数据需要延迟一拍 传入dcache 
-  val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
-   io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,s1_req_vpu_data ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+  //val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
+   io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
   // io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
-  when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := s1_req_vpu_mask}
+  //val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
+  io.dmem.s1_data.mask := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.mask,DontCare)
+  //when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := io.vpu_memory.req.bits.mask}
   
   //若是vpu出现异常的话是否添加冲刷指令?
   io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !vinst_accessing
