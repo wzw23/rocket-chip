@@ -1188,14 +1188,13 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.dmem.req.bits.dprv := Mux(io.vpu_memory.req.valid,csr.io.status.dprv,Mux(ex_reg_hls, csr.io.hstatus.spvp, csr.io.status.dprv))
   io.dmem.req.bits.dv := Mux(io.vpu_memory.req.valid,csr.io.status.dv,ex_reg_hls || csr.io.status.dv)
   
-  
   //vpu传过来的数据需要延迟一拍 传入dcache 
-  //val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
-   io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data ,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  // io.dmem.s1_data.data := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  //val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
-  io.dmem.s1_data.mask := Mux(io.vpu_memory.req.valid,io.vpu_memory.req.bits.mask,DontCare)
-  //when(io.vpu_memory.req.valid){io.dmem.s1_data.mask := io.vpu_memory.req.bits.mask}
+  val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
+   io.dmem.s1_data.data := Mux(RegNext(io.vpu_memory.req.valid),s1_req_vpu_data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+  
+  val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
+  io.dmem.s1_data.mask := Mux(RegNext(io.vpu_memory.req.valid),s1_req_vpu_mask,0.U)
+  
   
   //若是vpu出现异常的话是否添加冲刷指令?
   io.dmem.s1_kill := (killm_common || mem_ldst_xcpt || fpu_kill_mem) && !vinst_accessing
