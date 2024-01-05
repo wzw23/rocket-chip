@@ -1030,8 +1030,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
   //wzw: 添加vpu设置scoreboard支持
   // TODO:译码部分加入对id_wen的译码
-  val sboard_waddr =Mux((id_vector_wxd), id_waddr,wb_waddr)
-  sboard.set((wb_set_sboard && wb_wen)||(id_vector_wxd ), sboard_waddr)
+  val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
+  sboard.set((wb_set_sboard && wb_wen)||(id_vector_wxd), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined
