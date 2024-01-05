@@ -328,10 +328,12 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   require(!(coreParams.useRVE && coreParams.fpu.nonEmpty), "Can't select both RVE and floating-point")
   require(!(coreParams.useRVE && coreParams.useHypervisor), "Can't select both RVE and Hypervisor")
   val id_ctrl = Wire(new IntCtrlSigs(aluFn)).decode(id_inst(0), decode_table)
-  //zxr 
-when(id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M || id_inst(0) === VFIRST_M) {
-  id_ctrl.wxd := true.B
-}
+  //zxr : add for set scoreboard
+  val id_vector_wxd = id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M || id_inst(0) === VFIRST_M
+ //when(id_vector_wxd) {
+ //  id_ctrl.wxd := true.B
+ //}
+
   
   val lgNXRegs = if (coreParams.useRVE) 4 else 5
   val regAddrMask = (1 << lgNXRegs) - 1
@@ -805,7 +807,7 @@ when(id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M
   val wb_wxd = wb_reg_valid && wb_ctrl.wxd
   val wb_set_sboard = wb_ctrl.div || wb_dcache_miss || wb_ctrl.rocc
     //wzw 防止vpu产生的写后读问题
-  val id_set_sboard = id_ctrl.vector
+  //val id_set_sboard = id_ctrl.vector 
   val replay_wb_common = (io.dmem.s2_nack && !vinst_accessing )|| wb_reg_replay
   val replay_wb_rocc = wb_reg_valid && wb_ctrl.rocc && !io.rocc.cmd.ready
   val replay_wb = replay_wb_common || replay_wb_rocc
@@ -923,7 +925,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   val wb_wen = wb_valid && wb_ctrl.wxd
   //wzw 防止vpu可能产生的写后读问题
-  val id_wen = (!ctrl_killd) & id_ctrl.wxd
+
+  //val id_wen = (!ctrl_killd) & id_ctrl.wxd
   val rf_wen = wb_wen || ll_wen
   val rf_waddr = Mux(ll_wen, ll_waddr, wb_waddr)
   val rf_wdata = Mux(dmem_resp_valid && dmem_resp_xpu, io.dmem.resp.bits.data(xLen-1, 0),
@@ -1027,8 +1030,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
   //wzw: 添加vpu设置scoreboard支持
   // TODO:译码部分加入对id_wen的译码
-  val sboard_waddr =Mux((id_set_sboard & id_wen), id_waddr,wb_waddr)
-  sboard.set((wb_set_sboard && wb_wen)||(id_set_sboard & id_wen ), sboard_waddr)
+  val sboard_waddr =Mux((id_vector_wxd), id_waddr,wb_waddr)
+  sboard.set((wb_set_sboard && wb_wen)||(id_vector_wxd ), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined
@@ -1283,8 +1286,8 @@ if(coreParams.useVerif) {
   ver_module.io.uvm_in.wb_set_sboard := wb_set_sboard
   ver_module.io.uvm_in.wb_wen := wb_wen
   ver_module.io.uvm_in.sboard_waddr := sboard_waddr
-  ver_module.io.uvm_in.id_set_sboard := id_set_sboard
-  ver_module.io.uvm_in.id_wen := id_wen
+  //ver_module.io.uvm_in.id_set_sboard := id_set_sboard
+  //ver_module.io.uvm_in.id_wen := id_wen
   ver_module.io.uvm_in.ibuf_pc := ibuf.io.pc
   ver_module.io.uvm_in.wb_dcache_miss := wb_dcache_miss
   ver_module.io.uvm_in.fpu_sboard_set := io.fpu.sboard_set
