@@ -1241,7 +1241,7 @@ if(coreParams.useVerif) {
 
   ver_module.io.uvm_in.vpu_commit_vld := io.vpu_commit.commit_vld
   ver_module.io.uvm_in.wb_ctrl := wb_ctrl
-  ver_module.io.uvm_in.wb_reg_valid := wb_reg_valid
+  ver_module.io.uvm_in.wb_reg_valid := wb_valid
   ver_module.io.uvm_in.wb_reg_pc := wb_reg_pc
   ver_module.io.uvm_in.wb_reg_raw_inst := wb_reg_raw_inst
   ver_module.io.uvm_in.wb_reg_inst := wb_reg_inst
@@ -1501,7 +1501,7 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
     Cat(memoryValues.reverse)
   }
   def ver_read_withoutrestrict():UInt={
-    access(10.U)
+    access(17.U)
   }
 }
 

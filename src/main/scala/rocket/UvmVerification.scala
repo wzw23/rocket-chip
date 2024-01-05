@@ -223,7 +223,7 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   io.uvm_out.commit_insn := RegEnable(Mux(q.io.out.fire,q.io.out.bits.insn,wb_insn), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_fused := 0.U
 
-  io.uvm_out.sim_halt := RegNext((io.uvm_in.ver_read_withoutrestrict===(0.U)) && (io.uvm_in.wb_reg_inst === (0x73.U(32.W))),0.U)
+  io.uvm_out.sim_halt := RegNext((io.uvm_in.ver_read_withoutrestrict===(93.U)) && (io.uvm_in.wb_reg_inst === (0x73.U(32.W))),0.U)
 
   io.uvm_out.trap_valid := RegEnable(io.uvm_in.wb_xcpt, 0.U, coreParams.useVerif.B)
   //  io.uvm_out.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
