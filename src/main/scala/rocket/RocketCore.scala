@@ -12,6 +12,7 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
 import scala.collection.mutable.ArrayBuffer
+import Instructions._
 
 
 case class RocketCoreParams(
@@ -227,7 +228,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     Seq(new FenceIDecode(tile.dcache.flushOnFenceI, aluFn)) ++:
     coreParams.haveCFlush.option(new CFlushDecode(tile.dcache.canSupportCFlushLine, aluFn)) ++:
     rocketParams.haveCease.option(new CeaseDecode(aluFn)) ++:
-    Seq(new IDecode(aluFn))
+    Seq(new IDecode(aluFn)) 
   } flatMap(_.table)
 
   val ex_ctrl = Reg(new IntCtrlSigs(aluFn))
@@ -327,6 +328,11 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   require(!(coreParams.useRVE && coreParams.fpu.nonEmpty), "Can't select both RVE and floating-point")
   require(!(coreParams.useRVE && coreParams.useHypervisor), "Can't select both RVE and Hypervisor")
   val id_ctrl = Wire(new IntCtrlSigs(aluFn)).decode(id_inst(0), decode_table)
+  //zxr 
+when(id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M || id_inst(0) === VFIRST_M) {
+  id_ctrl.wxd := true.B
+}
+  
   val lgNXRegs = if (coreParams.useRVE) 4 else 5
   val regAddrMask = (1 << lgNXRegs) - 1
 
@@ -1190,8 +1196,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   
   //vpu传过来的数据需要延迟一拍 传入dcache 
   val s1_req_vpu_data = RegEnable(io.vpu_memory.req.bits.data,0.U,io.vpu_memory.req.valid)
-   io.dmem.s1_data.data := Mux(RegNext(io.vpu_memory.req.valid),s1_req_vpu_data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
-  
+  io.dmem.s1_data.data := Mux(RegNext(io.vpu_memory.req.valid),s1_req_vpu_data,(if (fLen == 0) mem_reg_rs2 else Mux(mem_ctrl.fp, Fill((xLen max fLen) / fLen, io.fpu.store_data), mem_reg_rs2)))
+
   val s1_req_vpu_mask = RegEnable(io.vpu_memory.req.bits.mask,0.U,io.vpu_memory.req.valid)
   io.dmem.s1_data.mask := Mux(RegNext(io.vpu_memory.req.valid),s1_req_vpu_mask,0.U)
   
