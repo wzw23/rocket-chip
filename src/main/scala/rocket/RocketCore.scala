@@ -252,6 +252,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_scie_unpipelined = Reg(Bool())
   val ex_scie_pipelined = Reg(Bool())
   val ex_reg_wphit            = Reg(Vec(nBreakpoints, Bool()))
+  //zxr:
+  val ex_reg_fp_rs1 = Reg(Bits())
 
   val mem_reg_xcpt_interrupt  = Reg(Bool())
   val mem_reg_valid           = Reg(Bool())
@@ -279,7 +281,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: 添加mem_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
    */
   val mem_reg_rs1 = Reg(Bits())
-
+  //zxr:
+  val mem_reg_fp_rs1 = Reg(Bits())
 
 
 
@@ -307,6 +310,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
    * @Description: 添加wb_reg_rs1信号，方便vset(i)vl(i)在wb阶段进行计算
    */
   val wb_reg_rs1 = Reg(Bits())
+  //zxr:
+  val wb_reg_fp_rs1 = Reg(Bits())
 
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
@@ -329,7 +334,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   require(!(coreParams.useRVE && coreParams.useHypervisor), "Can't select both RVE and Hypervisor")
   val id_ctrl = Wire(new IntCtrlSigs(aluFn)).decode(id_inst(0), decode_table)
   //zxr : add for set scoreboard
-  val id_vector_wxd = id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M || id_inst(0) === VFIRST_M
+  val id_vector_wxd = id_inst(0) === VMV_X_S || id_inst(0) === VCPOP_M || id_inst(0) === VFIRST_M
  //when(id_vector_wxd) {
  //  id_ctrl.wxd := true.B
  //}
@@ -538,6 +543,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   ex_reg_xcpt := !ctrl_killd && id_xcpt
   ex_reg_xcpt_interrupt := !take_pc && ibuf.io.inst(0).valid && csr.io.interrupt
 
+   //zxr:
+  ex_reg_fp_rs1 := io.fpu.fp_rs1
+
   when (!ctrl_killd) {
     ex_ctrl := id_ctrl
     ex_reg_rvc := ibuf.io.inst(0).bits.rvc
@@ -667,6 +675,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     mem_reg_mem_size := ex_reg_mem_size
     mem_reg_hls_or_dv := io.dmem.req.bits.dv
     mem_reg_pc := ex_reg_pc
+
+    //zxr:
+    mem_reg_fp_rs1 := ex_reg_fp_rs1
     // IDecode ensured they are 1H
     mem_reg_wdata := Mux1H(Seq(
       ex_scie_unpipelined -> ex_scie_unpipelined_wdata,
@@ -753,6 +764,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
      * @Description: x[rs1]
      */
     wb_reg_rs1 := mem_reg_rs1
+
+    //zxr:
+    wb_reg_fp_rs1 := mem_reg_fp_rs1
 
     wb_reg_cause := mem_cause
     wb_reg_inst := mem_reg_inst
@@ -870,6 +884,7 @@ val vectorQueue = Module(new InsructionQueue(8))
 vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector 
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
 vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
+vectorQueue.io.enqueueInfo.bits.v_fp_rs1 := wb_reg_fp_rs1
 vectorQueue.io.enqueueInfo.bits.v_inst := wb_reg_inst
 vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
@@ -880,6 +895,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.vpu_issue.bits.inst := vectorQueue.io.dequeueInfo.bits.v_inst
   io.vpu_issue.bits.rs1 := vectorQueue.io.dequeueInfo.bits.v_rs1
   io.vpu_issue.bits.rs2 := vectorQueue.io.dequeueInfo.bits.v_rs2
+  io.vpu_issue.bits.frs1 := vectorQueue.io.dequeueInfo.bits.v_fp_rs1
 
   io.vpu_issue.bits.vInfo.vl := csr.io.vector.get.vconfig.vl
   io.vpu_issue.bits.vInfo.vstart := csr.io.vector.get.vstart
@@ -1015,7 +1031,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val hazard_targets = Seq((id_ctrl.rxs1 && id_raddr1 =/= 0.U, id_raddr1),
                            (id_ctrl.rxs2 && id_raddr2 =/= 0.U, id_raddr2),
                            (id_ctrl.wxd  && id_waddr  =/= 0.U, id_waddr))
-  val fp_hazard_targets = Seq((io.fpu.dec.ren1, id_raddr1),
+  val fp_hazard_targets = Seq((io.fpu.dec.ren1 || id_ctrl.vector, id_raddr1),   //zxr: add for vector inst
                               (io.fpu.dec.ren2, id_raddr2),
                               (io.fpu.dec.ren3, id_raddr3),
                               (io.fpu.dec.wen, id_waddr))
@@ -1053,10 +1069,13 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val data_hazard_wb = wb_ctrl.wxd && checkHazards(hazard_targets, _ === wb_waddr)
   val fp_data_hazard_wb = id_ctrl.fp && wb_ctrl.wfd && checkHazards(fp_hazard_targets, _ === wb_waddr)
   val id_wb_hazard = wb_reg_valid && (data_hazard_wb && wb_set_sboard || fp_data_hazard_wb)
+ 
+  //zxr:add the set condition of fp_sboard
+  val id_vector_wfd = id_inst(0) === VFMV_F_S
 
   val id_stall_fpu = if (usingFPU) {
     val fp_sboard = new Scoreboard(32)
-    fp_sboard.set((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid, wb_waddr)
+    fp_sboard.set((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid || id_vector_wfd, Mux(id_vector_wfd,id_waddr,wb_waddr))
     fp_sboard.clear(dmem_resp_replay && dmem_resp_fpu, dmem_resp_waddr)
     fp_sboard.clear(io.fpu.sboard_clr, io.fpu.sboard_clra)
 
@@ -1151,7 +1170,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.imem.bht_update.bits.branch := mem_ctrl.branch
   io.imem.bht_update.bits.prediction := mem_reg_btb_resp.bht
 
-  io.fpu.valid := !ctrl_killd && id_ctrl.fp
+  io.fpu.valid := !ctrl_killd && id_ctrl.fp || id_ctrl.vector // allow vector instruction
   io.fpu.killx := ctrl_killx
   io.fpu.killm := killm_common
   io.fpu.inst := id_inst(0)
@@ -1161,6 +1180,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.fpu.dmem_resp_type := io.dmem.resp.bits.size
   io.fpu.dmem_resp_tag := dmem_resp_waddr
   io.fpu.keep_clock_enabled := io.ptw.customCSRs.disableCoreClockGate
+  //zxr:
+  io.fpu.id_ctrl_vector := id_ctrl.vector 
 
 //添加dmem访存条件
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
@@ -1288,6 +1309,8 @@ if(coreParams.useVerif) {
   ver_module.io.uvm_in.sboard_waddr := sboard_waddr
   //ver_module.io.uvm_in.id_set_sboard := id_set_sboard
   //ver_module.io.uvm_in.id_wen := id_wen
+  //zxr:
+  ver_module.io.uvm_in.id_vector_wxd := id_vector_wxd
   ver_module.io.uvm_in.ibuf_pc := ibuf.io.pc
   ver_module.io.uvm_in.wb_dcache_miss := wb_dcache_miss
   ver_module.io.uvm_in.fpu_sboard_set := io.fpu.sboard_set
@@ -1462,6 +1485,7 @@ class vectorInstInfo extends Bundle{
   val v_inst = UInt(32.W)
   val v_rs1 = UInt(64.W)
   val v_rs2 = UInt(64.W)
+  val v_fp_rs1 = UInt(64.W)
 }
 
 class InsructionQueue(depth:Int) extends Module{

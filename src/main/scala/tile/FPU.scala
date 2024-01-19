@@ -205,6 +205,11 @@ class FPUCoreIO(implicit p: Parameters) extends CoreBundle()(p) {
   val sboard_clra = Output(UInt(5.W))
 
   val keep_clock_enabled = Input(Bool())
+
+
+  //zxr:
+  val fp_rs1 = Output(Bits())
+  val id_ctrl_vector = Input(Bool())
   /**
  * @Editors: wuzewei
  * @Description: add for verification
@@ -836,7 +841,11 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
       when (!id_ctrl.swap12 && !id_ctrl.swap23) { ex_ra(1) := io.inst(24,20) }
     }
     when (id_ctrl.ren3) { ex_ra(2) := io.inst(31,27) }
+    when (io.id_ctrl_vector){ex_ra(0) := io.inst(19,15)}
   }
+  //zxr:
+     io.fp_rs1 := ex_rs(0)
+  
   val ex_rm = Mux(ex_reg_inst(14,12) === 7.U, io.fcsr_rm, ex_reg_inst(14,12))
 
   def fuInput(minT: Option[FType]): FPInput = {
