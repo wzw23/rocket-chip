@@ -763,12 +763,19 @@ when(id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M
     wb_reg_wphit := mem_reg_wphit | bpu.io.bpwatch.map { bpw => (bpw.rvalid(0) && mem_reg_load) || (bpw.wvalid(0) && mem_reg_store) }
 
   }
-
+  val vpu_lsu_xcpt = io.vpu_commit.commit_vld && io.vpu_commit.exception_vld
   val (wb_xcpt, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
     (io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst,Causes.illegal_instruction.U),
     //wzw:若是访存异常的话，将wb_cause设置为vpu传过来的异常号
-    (io.vpu_commit.commit_vld&&io.vpu_commit.exception_vld,vpu_mcause),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.pf.st, Causes.store_page_fault.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.pf.ld, Causes.load_page_fault.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.gf.st, Causes.store_guest_page_fault.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.gf.ld, Causes.load_guest_page_fault.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.ae.st, Causes.store_access.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.ae.ld, Causes.load_access.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.ma.st, Causes.misaligned_store.U),
+    (vpu_lsu_xcpt && io.vpu_commit.xcpt_cause.ma.ld, Causes.misaligned_load.U),
     (wb_reg_xcpt,  wb_reg_cause),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.ld, Causes.load_page_fault.U),
@@ -842,17 +849,19 @@ when(id_inst(0) === VMV_X_S || id_inst(0) === VFMV_F_S || id_inst(0) === VCPOP_M
     val symbol=Fill(xLen-1-5,0.U)
     wb_avl := Cat(symbol,wb_uimm)
   }
-  val issue_vconfig = Wire(new VConfig)
+  val vset_issue_vconfig = Wire(new VConfig)
+  val vpu_issue_vconfig = Wire(new VConfig)
+  vpu_issue_vconfig.vtype := VType.fromUInt(csr.io.vector.get.vconfig.vtype.asUInt,false)
+  vpu_issue_vconfig.vl := io.vpu_commit.update_vl
   // val issue_vstart = Wire(UInt(maxVLMax.log2.W))
   // val issue_vxsat = Wire(Bool())
   val zeroSignal=0.U(((xLen)-8).W)
   val zimm=Cat(zeroSignal,wb_reg_wdata(7,0))
-  issue_vconfig.vtype := VType.fromUInt(zimm,false)
-  issue_vconfig.vl := VType.computeVL(wb_avl,zimm,csr.io.vector.get.vconfig.vl,wb_usecurrent,wb_usemax,wb_usezero)
+  vset_issue_vconfig.vtype := VType.fromUInt(zimm,false)
+  vset_issue_vconfig.vl := VType.computeVL(wb_avl,zimm,csr.io.vector.get.vconfig.vl,wb_usecurrent,wb_usemax,wb_usezero)
   csr.io.vector.foreach { vio =>
-    //TODO:添加commit修改vl逻辑
-    vio.set_vconfig.bits := issue_vconfig   
-    vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset)
+    vio.set_vconfig.bits := Mux((wb_valid & wb_ctrl.vset),vset_issue_vconfig,vpu_issue_vconfig)
+    vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset) | (io.vpu_commit.commit_vld & io.vpu_commit.update_vl)
     //wzw:change for updating vstart All vector instructions, including vset{i}vl{i}, reset the vstart CSR to zero
     vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset)
     vio.set_vstart.bits := Mux((wb_valid & wb_ctrl.vset),0.U,update_vstart_data)
@@ -907,11 +916,14 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   }
   //wzw:写回阶段的接口
   if(usingVector){
-    when(io.vpu_commit.commit_vld){
+      //TODO:需要有类似的添加,否则会有错误
+      //io.vpu.resp.ready := !wb_wxd
+      div.io.resp.ready := false.B
+      if (usingRoCC)
+       io.rocc.resp.ready := false.B
       ll_wdata := io.vpu_commit.return_data
-      ll_wen := io.vpu_commit.return_data_vld
+      ll_wen := io.vpu_commit.return_data_vld & io.vpu_commit.commit_vld
       ll_waddr := io.vpu_commit.return_reg_idx
-    }
   }
   when (dmem_resp_replay && dmem_resp_xpu) {
     div.io.resp.ready := false.B
@@ -931,7 +943,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
                   * @Editors: wuzewei
                   * @Description: 若是vset(i)vl(i)信号，则写回的是从csr返回的vl的值
                   */
-                 Mux(wb_ctrl.vset,issue_vconfig.vl,
+                 Mux(wb_ctrl.vset,vset_issue_vconfig.vl,
                  Mux(ll_wen, ll_wdata,
                  Mux(wb_ctrl.csr =/= CSR.N, csr.io.rw.rdata,
                  Mux(wb_ctrl.mul, mul.map(_.io.resp.bits.data).getOrElse(wb_reg_wdata),
@@ -952,8 +964,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.fpu.time := csr.io.time(31,0)
   io.fpu.hartid := io.hartid
   csr.io.rocc_interrupt := io.rocc.interrupt
-  //wzw：当vpu返回的值有效时，此时的pc是vpu传过来的pc
-  //TODO:此处可能有误
+  //wzw：当vpu返回的值有效时，此时的pc是vpu传过来的pc 用于更新mepc
   when(io.vpu_commit.commit_vld){
     csr.io.pc := vpu_pc
   }.otherwise{
@@ -1158,6 +1169,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.fpu.dmem_resp_type := io.dmem.resp.bits.size
   io.fpu.dmem_resp_tag := dmem_resp_waddr
   io.fpu.keep_clock_enabled := io.ptw.customCSRs.disableCoreClockGate
+  //TODO:vpu写回数据服用以上数据通路
 
 //添加dmem访存条件
   io.dmem.req.valid     := (ex_reg_valid && ex_ctrl.mem)|(io.vpu_memory.req.valid)
@@ -1507,7 +1519,7 @@ class RegFile(n: Int, w: Int, zero: Boolean = false) {
     Cat(memoryValues.reverse)
   }
   def ver_read_withoutrestrict():UInt={
-    access(17.U)
+    access(10.U)
   }
 }
 

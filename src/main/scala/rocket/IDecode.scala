@@ -169,6 +169,8 @@ class IDecode(aluFn: ALUFN = ALUFN())(implicit val p: Parameters) extends Decode
     OPIVX->     List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
     OPFVF->     List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
     OPMVX->     List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
+    //wzw:add for verification
+  ROCKET_EXIT-> List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,N,N),
     /**
      * @Change: wuzewei
      * @Description: 更改某些地方逻辑
