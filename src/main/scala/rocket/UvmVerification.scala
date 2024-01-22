@@ -14,7 +14,7 @@ class VEROUTIO(implicit p: Parameters) extends CoreBundle()(p) {
   val commit_insn = Output(UInt((NRET*32).W))
   val commit_fused = Output(UInt((NRET).W))
 
-  val sim_halt = Output(UInt((NRET).W))
+  val sim_halt = Output(UInt((NRET*2).W))
 
   val  trap_valid = Output(UInt((NTRAP).W))
   val  trap_pc = Output(UInt((xLen).W))
@@ -223,7 +223,12 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   io.uvm_out.commit_insn := RegEnable(Mux(q.io.out.fire,q.io.out.bits.insn,wb_insn), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_fused := 0.U
 
-  io.uvm_out.sim_halt := RegNext((io.uvm_in.ver_read_withoutrestrict===(93.U)) && (io.uvm_in.wb_reg_inst === (0x73.U(32.W))),0.U)
+  val RunPassFail = MuxCase(0.U,Seq(
+    ((io.uvm_in.ver_read_withoutrestrict===(0.U)) && (io.uvm_in.wb_reg_inst === (0x6b.U(32.W)))) -> 1.U,
+    ((io.uvm_in.ver_read_withoutrestrict===(8888.U)) && (io.uvm_in.wb_reg_inst === (0x6b.U(32.W)))) -> 2.U
+  ))
+  io.uvm_out.sim_halt := RegNext(RunPassFail,0.U)
+  require(io.uvm_out.sim_halt != 3.U,"sim_halt should not be 3")
 
   io.uvm_out.trap_valid := RegEnable(io.uvm_in.wb_xcpt, 0.U, coreParams.useVerif.B)
   //  io.uvm_out.trap_pc := RegEnable(wb_reg_pc,0.U,coreParams.useVerif.B)
