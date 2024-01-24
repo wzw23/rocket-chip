@@ -1147,7 +1147,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
                                 mem_npc))    // flush or branch misprediction
   io.imem.flush_icache := wb_reg_valid && wb_ctrl.fence_i && !io.dmem.s2_nack
   io.imem.might_request := {
-    imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate
+    //wzw:when ex_pc_valid and mem_pc_valid is false vector instruction might request
+    imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate || isvectorrun
     imem_might_request_reg
   }
   io.imem.progress := RegNext(wb_reg_valid && !replay_wb_common)
@@ -1318,10 +1319,8 @@ if(coreParams.useVerif) {
   ver_module.io.uvm_in.wb_set_sboard := wb_set_sboard
   ver_module.io.uvm_in.wb_wen := wb_wen
   ver_module.io.uvm_in.sboard_waddr := sboard_waddr
-  //ver_module.io.uvm_in.id_set_sboard := id_set_sboard
-  //ver_module.io.uvm_in.id_wen := id_wen
-  //zxr:
-  ver_module.io.uvm_in.id_vector_wxd := id_vector_wxd
+  ver_module.io.uvm_in.id_set_sboard := 1.B
+  ver_module.io.uvm_in.id_wen := id_vector_wxd
   ver_module.io.uvm_in.ibuf_pc := ibuf.io.pc
   ver_module.io.uvm_in.wb_dcache_miss := wb_dcache_miss
   ver_module.io.uvm_in.fpu_sboard_set := io.fpu.sboard_set
