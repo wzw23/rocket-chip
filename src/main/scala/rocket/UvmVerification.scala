@@ -124,6 +124,7 @@ class VERINIO(implicit p: Parameters) extends CoreBundle()(p){
   val wb_xcpt = Input(UInt())
   val ver_read = Input(UInt())
   val vpu_rfdata =Input(Vec(32, UInt(128.W)))
+  val fpu_ver_read = Input(UInt())
 
   val status = Input(UInt())
   val mepc = Input(UInt())
@@ -239,8 +240,8 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   //因为延迟了一个周期所以寄存器中的值是after commit
   io.uvm_out.reg_gpr := io.uvm_in.ver_read
   //fpu寄存器的值通过fpu io接口引出
-  //暂时将fpr设置为0 完成第一轮测试
-  //io.uvm_out.reg_fpr := io.fpu.fpu_ver_reg.get
+  io.uvm_out.reg_fpr := io.uvm_in.fpu_ver_read
+//io.uvm_out.reg_fpr := io.fpu.fpu_ver_reg.get
   io.uvm_out.reg_fpr := 0.U
   //io.uvm_out.reg_vpr := io.vpu_rfdata
   io.uvm_out.reg_vpr := Cat((io.uvm_in.vpu_rfdata).reverse)

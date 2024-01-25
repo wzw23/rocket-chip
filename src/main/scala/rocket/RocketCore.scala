@@ -1084,11 +1084,15 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //zxr:add the set condition of fp_sboard
   val id_vector_wfd = id_inst(0) === VFMV_F_S
 
+  //wzw:add vpu_w_fpr to clear sboard
+  val vpu_w_fpr= (io.vpu_commit.commit_vld & io.vpu_commit.return_data_fudian_vld)
   val id_stall_fpu = if (usingFPU) {
     val fp_sboard = new Scoreboard(32)
     fp_sboard.set((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid || id_vector_wfd, Mux(id_vector_wfd,id_waddr,wb_waddr))
     fp_sboard.clear(dmem_resp_replay && dmem_resp_fpu, dmem_resp_waddr)
     fp_sboard.clear(io.fpu.sboard_clr, io.fpu.sboard_clra)
+    //wzw: fp clear sboard
+    fp_sboard.clear(vpu_w_fpr.asBool,io.vpu_commit.return_reg_idx)
 
     checkHazards(fp_hazard_targets, fp_sboard.read _)
   } else false.B
@@ -1187,10 +1191,11 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.fpu.killm := killm_common
   io.fpu.inst := id_inst(0)
   io.fpu.fromint_data := ex_rs(0)
-  io.fpu.dmem_resp_val := dmem_resp_valid && dmem_resp_fpu
-  io.fpu.dmem_resp_data := (if (minFLen == 32) io.dmem.resp.bits.data_word_bypass else io.dmem.resp.bits.data)
-  io.fpu.dmem_resp_type := io.dmem.resp.bits.size
-  io.fpu.dmem_resp_tag := dmem_resp_waddr
+  //wzw:use this interface to write fpr
+  io.fpu.dmem_resp_val := (dmem_resp_valid && dmem_resp_fpu) || vpu_w_fpr
+  io.fpu.dmem_resp_data := Mux(vpu_w_fpr,io.vpu_commit.return_data,(if (minFLen == 32) io.dmem.resp.bits.data_word_bypass else io.dmem.resp.bits.data))
+  io.fpu.dmem_resp_type := Mux(vpu_w_fpr,3.asUInt,io.dmem.resp.bits.size)
+  io.fpu.dmem_resp_tag := Mux(vpu_w_fpr,io.vpu_commit.return_reg_idx,dmem_resp_waddr)
   io.fpu.keep_clock_enabled := io.ptw.customCSRs.disableCoreClockGate
   //zxr:
   io.fpu.id_ctrl_vector := id_ctrl.vector
@@ -1290,6 +1295,7 @@ if(coreParams.useVerif) {
   ver_module.io.uvm_in.ver_read_withoutrestrict := rf.ver_read_withoutrestrict()
   ver_module.io.uvm_in.wb_xcpt := wb_xcpt
   ver_module.io.uvm_in.ver_read := rf.ver_read()
+  ver_module.io.uvm_in.fpu_ver_read := io.fpu.fpu_ver_reg.get
   ver_module.io.uvm_in.vpu_rfdata := io.vpu_rfdata
 
   ver_module.io.uvm_in.status := csr.io.status.asUInt
