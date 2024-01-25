@@ -934,6 +934,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   }
   //wzw:写回阶段的接口
   if(usingVector){
+    when(io.vpu_commit.commit_vld){
       //TODO:需要有类似的添加,否则会有错误
       //io.vpu.resp.ready := !wb_wxd
       div.io.resp.ready := false.B
@@ -942,6 +943,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
       ll_wdata := io.vpu_commit.return_data
       ll_wen := io.vpu_commit.return_data_vld & io.vpu_commit.commit_vld
       ll_waddr := io.vpu_commit.return_reg_idx
+    }
   }
   when (dmem_resp_replay && dmem_resp_xpu) {
     div.io.resp.ready := false.B
