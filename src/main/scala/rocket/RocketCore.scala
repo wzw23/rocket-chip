@@ -252,8 +252,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_scie_unpipelined = Reg(Bool())
   val ex_scie_pipelined = Reg(Bool())
   val ex_reg_wphit            = Reg(Vec(nBreakpoints, Bool()))
-  //zxr:
-  val ex_reg_fp_rs1 = Reg(Bits())
 
   val mem_reg_xcpt_interrupt  = Reg(Bool())
   val mem_reg_valid           = Reg(Bool())
@@ -544,7 +542,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   ex_reg_xcpt_interrupt := !take_pc && ibuf.io.inst(0).valid && csr.io.interrupt
 
    //zxr:
-  ex_reg_fp_rs1 := io.fpu.fp_rs1
+   //wzw:fix here because fpu and core are in same cycle,so ex_reg_hls is wire type
+  val ex_reg_fp_rs1 = io.fpu.fp_rs1
 
   when (!ctrl_killd) {
     ex_ctrl := id_ctrl
@@ -1343,6 +1342,7 @@ if(coreParams.useVerif) {
   ver_module.io.uvm_in.fpu_sboard_clr := io.fpu.sboard_clr
   ver_module.io.uvm_in.wb_waddr := wb_waddr
   ver_module.io.uvm_in.fpu_sboard_clra := io.fpu.sboard_clra
+  ver_module.io.uvm_in.fpu_ld := io.fpu.dmem_resp_val
 
   dontTouch(io.verif.get)
   io.verif.get <> ver_module.io.uvm_out

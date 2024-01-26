@@ -170,6 +170,8 @@ class VERINIO(implicit p: Parameters) extends CoreBundle()(p){
   val dmem_resp_waddr = Input(UInt())
   val fpu_sboard_clr = Input(Bool())
   val fpu_sboard_clra = Input(UInt())
+  //wzw: add for fpu ld
+  val fpu_ld = Input(UInt())
 }
 
 class UvmQueueSignal (implicit p: Parameters) extends CoreBundle()(p) {
@@ -242,7 +244,6 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   //fpu寄存器的值通过fpu io接口引出
   io.uvm_out.reg_fpr := io.uvm_in.fpu_ver_read
 //io.uvm_out.reg_fpr := io.fpu.fpu_ver_reg.get
-  io.uvm_out.reg_fpr := 0.U
   //io.uvm_out.reg_vpr := io.vpu_rfdata
   io.uvm_out.reg_vpr := Cat((io.uvm_in.vpu_rfdata).reverse)
 
@@ -311,7 +312,7 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   io.uvm_out.csr_vstartWr := io.uvm_in.vstart
   //io.uvm_out.csr_vstartWr := 0.U
   //wzw: add for sfma
-  io.uvm_out.sfma := RegNext(RegNext(RegNext(io.uvm_in.fpu_1_wen)))
+  io.uvm_out.sfma := RegNext(RegNext(RegNext(io.uvm_in.fpu_1_wen))) | RegNext(io.uvm_in.fpu_ld)
 
   //TODO: open later now set to 0
   /*
