@@ -844,7 +844,8 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
     when (io.id_ctrl_vector){ex_ra(0) := io.inst(19,15)}
   }
   //zxr:
-     io.fp_rs1 := ex_rs(0)
+  //wzw: 由于浮点不是用ieee存储，所以传送时需要更改成ieee格式
+     io.fp_rs1 := ieee(ex_rs(0))
   
   val ex_rm = Mux(ex_reg_inst(14,12) === 7.U, io.fcsr_rm, ex_reg_inst(14,12))
 
