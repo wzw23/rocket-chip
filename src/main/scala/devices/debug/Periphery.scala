@@ -6,15 +6,16 @@ import chisel3._
 import chisel3.experimental.{IntParam, noPrefix}
 import chisel3.util._
 import chisel3.util.HasBlackBoxResource
+import chisel3.util.experimental.BoringUtils
 import org.chipsalliance.cde.config.{Field, Parameters}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.amba.apb._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.jtag._
 import freechips.rocketchip.util._
-import freechips.rocketchip.prci.{ClockSinkParameters, ClockSinkNode}
+import freechips.rocketchip.prci.{ClockSinkNode, ClockSinkParameters}
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.interrupts.{NullIntSyncSource, IntSyncXbar}
+import freechips.rocketchip.interrupts.{IntSyncXbar, NullIntSyncSource}
 
 /** Protocols used for communicating with external debugging tools */
 sealed trait DebugExportProtocol
@@ -187,14 +188,16 @@ class SimDTM(implicit p: Parameters) extends BlackBox with HasBlackBoxResource {
     val reset = Input(Bool())
     val debug = new DMIIO
     val exit = Output(UInt(32.W))
+    val close_debug = Input(Bool())
   })
 
-  def connect(tbclk: Clock, tbreset: Bool, dutio: ClockedDMIIO, tbsuccess: Bool) = {
+  def connect(tbclk: Clock, tbreset: Bool, dutio: ClockedDMIIO, tbsuccess: Bool,close_debug :Bool) = {
     io.clk := tbclk
     io.reset := tbreset
     dutio.dmi <> io.debug
     dutio.dmiClock := tbclk
     dutio.dmiReset := tbreset
+    io.close_debug := close_debug
 
     tbsuccess := io.exit === 1.U
     assert(io.exit < 2.U, "*** FAILED *** (exit code = %d)\n", io.exit >> 1.U)
@@ -255,7 +258,9 @@ object Debug {
     resetctrlOpt.map { rcio => rcio.hartIsInReset.map { _ := r }}
     debugOpt.map { debug =>
       debug.clockeddmi.foreach { d =>
-        val dtm = Module(new SimDTM).connect(c, r, d, out)
+        val close_debug = WireDefault(0.B);
+        BoringUtils.addSink(close_debug,"wzw_close_debug");
+        val dtm = Module(new SimDTM).connect(c, r, d, out ,close_debug)
       }
       debug.systemjtag.foreach { sj =>
         val jtag = Module(new SimJTAG(tickDelay=3)).connect(sj.jtag, c, r, ~r, out)

@@ -11,8 +11,10 @@ import freechips.rocketchip.tile._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 import freechips.rocketchip.scie._
+
 import scala.collection.mutable.ArrayBuffer
 import Instructions._
+import chisel3.util.experimental.BoringUtils
 
 
 case class RocketCoreParams(
@@ -1086,7 +1088,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val id_vector_wfd = id_inst(0) === VFMV_F_S
 
   //wzw:add vpu_w_fpr to clear sboard
-  val vpu_w_fpr= (io.vpu_commit.commit_vld & io.vpu_commit.return_data_fudian_vld)
+  val vpu_w_fpr= (io.vpu_commit.commit_vld & io.vpu_commit.return_data_float_vld)
   val id_stall_fpu = if (usingFPU) {
     val fp_sboard = new Scoreboard(32)
     fp_sboard.set((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid || id_vector_wfd, Mux(id_vector_wfd,id_waddr,wb_waddr))
@@ -1346,7 +1348,9 @@ if(coreParams.useVerif) {
 
   dontTouch(io.verif.get)
   io.verif.get <> ver_module.io.uvm_out
+  BoringUtils.addSource(io.verif.get, "wzw_uvm_out")
 }
+
   if (rocketParams.clockGate) {
     long_latency_stall := csr.io.csr_stall || io.dmem.perf.blocked || id_reg_pause && !unpause
     clock_en := clock_en_reg || ex_pc_valid || (!long_latency_stall && io.imem.resp.valid)
