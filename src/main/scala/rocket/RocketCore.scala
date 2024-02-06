@@ -1113,7 +1113,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val table = RegInit(0.U(4.W))
   when(io.vpu_issue.fire&io.vpu_commit.commit_vld){
     table := table;
-  }.elsewhen(io.vpu_issue.fire) {table := table + 1.U}
+  }.elsewhen(vectorQueue.io.enqueueInfo.valid) {table := table + 1.U}
   .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
   val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
 
