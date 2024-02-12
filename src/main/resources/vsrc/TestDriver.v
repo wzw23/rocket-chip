@@ -27,6 +27,11 @@ module TestDriver;
   int unsigned rand_value;
   initial
   begin
+    $fsdbDumpfile("tb_top");
+    $fsdbDumpvars("+all");
+  end
+  initial
+  begin
     void'($value$plusargs("max-cycles=%d", max_cycles));
     void'($value$plusargs("dump-start=%d", dump_start));
     verbose = $test$plusargs("verbose");
@@ -52,18 +57,18 @@ module TestDriver;
     if ($value$plusargs("vcdplusfile=%s", vcdplusfile))
     begin
 `ifdef VCS
-      $vcdplusfile(vcdplusfile);
+      //$vcdplusfile(vcdplusfile);
 `else
-      $fdisplay(stderr, "Error: +vcdplusfile is VCS-only; use +vcdfile instead or recompile with VCS=1");
-      $fatal;
+      //$fdisplay(stderr, "Error: +vcdplusfile is VCS-only; use +vcdfile instead or recompile with VCS=1");
+      //$fatal;
 `endif
     end
 
     if ($value$plusargs("fsdbfile=%s", fsdbfile))
     begin
 `ifdef FSDB
-      $fsdbDumpfile(fsdbfile);
-      $fsdbDumpvars("+all");
+      //$fsdbDumpfile(fsdbfile);
+      //$fsdbDumpvars("+all");
       //$fsdbDumpSVA;
 `else
       $fdisplay(stderr, "Error: +fsdbfile is FSDB-only; use +vcdfile/+vcdplus instead or recompile with FSDB=1");
@@ -73,8 +78,8 @@ module TestDriver;
 
     if ($value$plusargs("vcdfile=%s", vcdfile))
     begin
-      $dumpfile(vcdfile);
-      $dumpvars(0, testHarness);
+      //$dumpfile(vcdfile);
+      //$dumpvars(0, testHarness);
     end
 
 `ifdef FSDB
