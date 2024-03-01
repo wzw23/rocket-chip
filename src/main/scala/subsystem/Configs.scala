@@ -604,6 +604,15 @@ class WithDefaultMemPort extends Config((site, here, up) => {
                       idBits = 4), 1))
 })
 
+case object  OpenEmu extends Field[Option[Boolean]](None)
+//wzw
+class WithEmu extends Config((site, here, up) => {
+  case OpenEmu => Some(true)
+})
+class WithoutEmu extends Config((site, here, up) => {
+  case OpenEmu => Some(false)
+})
+
 class WithNoMemPort extends Config((site, here, up) => {
   case ExtMem => None
 })

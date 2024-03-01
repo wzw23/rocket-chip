@@ -166,11 +166,10 @@ void wzw_difftest_set_syn(uint64_t arr[154]) {
     inchi_difftest_set_reg(arr);
 }
 int wzw_difftest_diff_and_exec(uint64_t dut_arr[154]) {
-  static uint64_t spike_arr[154];
+  uint64_t spike_arr[154];
   static int function_return=0;
   inchi_difftest_get_reg(spike_arr);
 //  printf("minstret=%lx\n",spike_arr[5]);
-  inchi_difftest_exec();
   dut_arr[25]=0;
   spike_arr[25]=0;
 //  printf("dut_pc=%lx\n",dut_arr[6]);
@@ -182,6 +181,9 @@ int wzw_difftest_diff_and_exec(uint64_t dut_arr[154]) {
       fprintf(stderr,"spike_arr[%d]=%lx\n",i,spike_arr[i]);
       function_return = 1;
     }
-    return function_return;
   }
+  if(function_return)
+      fprintf(stderr,"--------------errorpc:%lx-----------\n",spike_arr[6]);
+  inchi_difftest_exec();
+    return function_return;
 }

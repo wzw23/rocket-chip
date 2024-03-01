@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
-#define WZW_DIFF 1
+#define WZW_DIFF 0
 #if WZW_DIFF
 #include "wzw_diff.h"
 extern "C" void inchi_difftest_set_reg(uint64_t arr[154]);
@@ -325,7 +325,7 @@ done_processing:
 #if WZW_DIFF
       static uint64_t dut_arr[154];
       static uint64_t spike_arr[154];
-      if((tile->io_uvm_out_sim_halt==1)&&tile->io_uvm_out_commit_valid){
+      if((tile->io_uvm_out_sim_halt==1)&&tile->io_uvm_out_commit_valid&&(open_diff==1)){
         fprintf(stderr,"--------------------------diff_success----------------------------------\n");
         printf("file name =%s,diff success\n",argv[argc-1]);
         break;
@@ -338,14 +338,19 @@ done_processing:
           dut_arr[7] = tile->io_uvm_out_commit_currPc;
 
       		for(int i=0;i<31;i++){
-          	dut_arr[i+122+1] = tile->io_uvm_out_reg_gpr[i];
+          	dut_arr[i+122+1] =     	dut_arr[i+122+1] = ((uint64_t)tile->io_uvm_out_reg_gpr[1+i*2] << 32) | tile->io_uvm_out_reg_gpr[i*2];
       		//`uvm_info(get_type_name(),$sformatf(" verif_reg_gpr_arr=%0h,verif_reg_gpr=%0h", data_exp_tr.verif_reg_gpr_arr[i],vif.verif_reg_gpr[64*i+:64]),UVM_NONE);
       	  }
-          for(int i=0;i<32;i++){
-          	dut_arr[90+i] = tile->io_uvm_out_reg_fpr[i];
-      			uint64_t value = tile->io_uvm_out_reg_vpr[i];
-                dut_arr[2*i+26] = value & 0xFFFFFFFFFFFFFFFF; // 取低64位
-                dut_arr[2*i+27] = (value >> 64) & 0xFFFFFFFFFFFFFFFF; // 取高64位
+          for(int i=0;i<32;i++)
+          	dut_arr[90+i] = ((uint64_t)tile->io_uvm_out_reg_fpr[1+i*2] << 32) | tile->io_uvm_out_reg_fpr[i*2];
+            for(int i=0;i<32;i++){
+            	dut_arr[90+i] = ((uint64_t)tile->io_uvm_out_reg_fpr[1+i*2] << 32) | tile->io_uvm_out_reg_fpr[i*2];
+            	uint128_t value = ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+3] << 96) |
+                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+2] << 64) |
+                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+1] << 32) |
+                                  tile->io_uvm_out_reg_vpr[4*i];
+                  dut_arr[2*i+26] = value & 0xFFFFFFFFFFFFFFFF; // 取低64位
+                  dut_arr[2*i+27] = (value >> 64) & 0xFFFFFFFFFFFFFFFF; // 取高64位
     }
 
 
@@ -375,17 +380,20 @@ done_processing:
         fprintf(stderr,"synchronous complete\n");
 }
 
-if((open_diff==1)&&tile->io_uvm_out_commit_valid){
+if((open_diff==1)&&tile->io_uvm_out_commit_valid&&(tile->io_uvm_out_sfma==0)){
   dut_arr[6] = tile->io_uvm_out_commit_prevPc;
             dut_arr[7] = tile->io_uvm_out_commit_currPc;
 
         		for(int i=0;i<31;i++){
-            	dut_arr[i+122+1] = tile->io_uvm_out_reg_gpr[i];
+            	dut_arr[i+122+1] = ((uint64_t)tile->io_uvm_out_reg_gpr[1+i*2] << 32) | tile->io_uvm_out_reg_gpr[i*2];
         		//`uvm_info(get_type_name(),$sformatf(" verif_reg_gpr_arr=%0h,verif_reg_gpr=%0h", data_exp_tr.verif_reg_gpr_arr[i],vif.verif_reg_gpr[64*i+:64]),UVM_NONE);
         	  }
             for(int i=0;i<32;i++){
-            	dut_arr[90+i] = tile->io_uvm_out_reg_fpr[i];
-        			uint64_t value = tile->io_uvm_out_reg_vpr[i];
+            	dut_arr[90+i] = ((uint64_t)tile->io_uvm_out_reg_fpr[1+i*2] << 32) | tile->io_uvm_out_reg_fpr[i*2];
+            	uint128_t value = ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+3] << 96) |
+                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+2] << 64) |
+                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+1] << 32) |
+                                  tile->io_uvm_out_reg_vpr[4*i];
                   dut_arr[2*i+26] = value & 0xFFFFFFFFFFFFFFFF; // 取低64位
                   dut_arr[2*i+27] = (value >> 64) & 0xFFFFFFFFFFFFFFFF; // 取高64位
       }
@@ -423,12 +431,15 @@ if((open_diff==1)&&tile->io_uvm_out_commit_valid){
                 break;
           }
   }
-  #endif
+  else if((open_diff==1)&&tile->io_uvm_out_commit_valid&&(tile->io_uvm_out_sfma==1)){
+    inchi_difftest_exec();
+  }
   if(open_diff){
     tile->io_close_debug =1;
   }
   else
     tile->io_close_debug =0;
+  #endif
   }
 
 #if VM_TRACE
