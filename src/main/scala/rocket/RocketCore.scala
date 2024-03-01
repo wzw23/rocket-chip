@@ -882,7 +882,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     //wzw:change for updating vstart All vector instructions, including vset{i}vl{i}, reset the vstart CSR to zero
     vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset)
     vio.set_vstart.bits := Mux((wb_valid & wb_ctrl.vset),0.U,update_vstart_data)
-    vio.set_vxsat := 0.U
+    vio.set_vxsat := io.vpu_commit.vxsat
     vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
     //vio.set_vs_dirty := false.asBool
     }
@@ -1112,8 +1112,9 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //if vpu busy, satll rocket，jyf
   //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
   //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
+  //wzw 如果发送到队列中则认为指令已经发出去了
   val table = RegInit(0.U(4.W))
-  when(io.vpu_issue.fire&io.vpu_commit.commit_vld){
+  when(vectorQueue.io.enqueueInfo.valid&io.vpu_commit.commit_vld){
     table := table;
   }.elsewhen(vectorQueue.io.enqueueInfo.valid) {table := table + 1.U}
   .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
