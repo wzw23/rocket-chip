@@ -375,6 +375,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     d.io
   }
   val id_illegal_rnum = if (usingCryptoNIST) (id_ctrl.zkn && aluFn.isKs1(id_ctrl.alu_fn) && id_inst(0)(23,20) > 0xA.U(4.W)) else false.B
+  //zxr: add vfp illegal instruction exception
+  val enZvfhmin : Boolean = true
+  val enZvfh : Boolean = true
+  val vfp_illegal_inst = id_inst(0) === VFNCVT_F_F_W && !csr.io.status.isa('d'-'a') && !enZvfhmin.B ||
+                         id_inst(0) === VFNCVT_ROD_F_F_W && !csr.io.status.isa('f'-'a') && !enZvfh.B ||
+                         csr.io.vector.get.vconfig.vtype.vsew === 1.U && !enZvfh.B ||
+                         csr.io.vector.get.vconfig.vtype.vsew === 2.U && !csr.io.status.isa('f'-'a') ||
+                         csr.io.vector.get.vconfig.vtype.vsew === 3.U && !csr.io.status.isa('d'-'a')
   val id_illegal_insn = !id_ctrl.legal ||
     (id_ctrl.mul || id_ctrl.div) && !csr.io.status.isa('m'-'a') ||
     id_ctrl.amo && !csr.io.status.isa('a'-'a') ||
@@ -388,7 +396,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_ctrl.scie && !(id_scie_decoder.unpipelined || id_scie_decoder.pipelined) ||
     id_csr_en && (csr.io.decode(0).read_illegal || !id_csr_ren && csr.io.decode(0).write_illegal) ||
     !ibuf.io.inst(0).bits.rvc && (id_system_insn && csr.io.decode(0).system_illegal) ||
-    id_illegal_rnum
+    id_illegal_rnum || 
+    vfp_illegal_inst ||
+    id_ctrl.vector && csr.io.decode(0).vector_illegal
   val id_virtual_insn = id_ctrl.legal &&
     ((id_csr_en && !(!id_csr_ren && csr.io.decode(0).write_illegal) && csr.io.decode(0).virtual_access_illegal) ||
      (!ibuf.io.inst(0).bits.rvc && id_system_insn && csr.io.decode(0).virtual_system_illegal))
@@ -665,7 +675,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }.elsewhen (ex_pc_valid) {
     mem_ctrl := ex_ctrl
     //zxr:
-    ex_vector_wxd := mem_vector_wxd
+    mem_vector_wxd := ex_vector_wxd
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
     mem_reg_rvc := ex_reg_rvc
@@ -761,7 +771,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   when (mem_pc_valid) {
     wb_ctrl := mem_ctrl
     //zxr:
-    mem_vector_wxd := wb_vector_wxd
+    wb_vector_wxd := mem_vector_wxd
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
       Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
@@ -1071,7 +1081,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   // TODO:译码部分加入对id_wen的译码
   //zxr: change from id stage to wb stage
  // val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
-  val sboard_waddr =wb_waddr
+  val sboard_waddr = wb_waddr
   sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.

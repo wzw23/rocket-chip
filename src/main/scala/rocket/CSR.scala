@@ -895,7 +895,8 @@ class CSRFile(
       (!usingSupervisor.B || reg_mstatus.prv >= PRV.S.U || read_scounteren(counter_addr)) &&
       (!usingHypervisor.B || !reg_mstatus.v || read_hcounteren(counter_addr))
     io_dec.fp_illegal := io.status.fs === 0.U || reg_mstatus.v && reg_vsstatus.fs === 0.U || !reg_misa('f'-'a')
-    io_dec.vector_illegal := io.status.vs === 0.U || reg_mstatus.v && reg_vsstatus.vs === 0.U || !reg_misa('v'-'a')
+    //zxr: add for illegal instruction exception
+    io_dec.vector_illegal := io.status.vs === 0.U || reg_mstatus.v && reg_vsstatus.vs === 0.U || !reg_misa('v'-'a') || reg_vstart.get =/= 0.U
     io_dec.fp_csr := decodeFast(fp_csrs.keys.toList)
     io_dec.rocc_illegal := io.status.xs === 0.U || reg_mstatus.v && reg_vsstatus.xs === 0.U || !reg_misa('x'-'a')
     val csr_addr_legal = reg_mstatus.prv >= CSR.mode(addr) ||
