@@ -338,7 +338,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
  //when(id_vector_wxd) {
  //  id_ctrl.wxd := true.B
  //}
-
+  //zxr: add for set scoreboard of vector instruction
+  val ex_vector_wxd = Reg(Bool())
+  val mem_vector_wxd = Reg(Bool())
+  val wb_vector_wxd = Reg(Bool())
   
   val lgNXRegs = if (coreParams.useRVE) 4 else 5
   val regAddrMask = (1 << lgNXRegs) - 1
@@ -549,6 +552,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
   when (!ctrl_killd) {
     ex_ctrl := id_ctrl
+    //zxr:
+    ex_vector_wxd := id_vector_wxd
     ex_reg_rvc := ibuf.io.inst(0).bits.rvc
     ex_ctrl.csr := id_csr
     ex_scie_unpipelined := id_ctrl.scie && id_scie_decoder.unpipelined
@@ -659,6 +664,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     mem_reg_sfence := false.B
   }.elsewhen (ex_pc_valid) {
     mem_ctrl := ex_ctrl
+    //zxr:
+    ex_vector_wxd := mem_vector_wxd
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
     mem_reg_rvc := ex_reg_rvc
@@ -753,6 +760,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
   when (mem_pc_valid) {
     wb_ctrl := mem_ctrl
+    //zxr:
+    mem_vector_wxd := wb_vector_wxd
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
       Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
@@ -1060,8 +1069,10 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
   //wzw: 添加vpu设置scoreboard支持
   // TODO:译码部分加入对id_wen的译码
-  val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
-  sboard.set((wb_set_sboard && wb_wen)||(id_vector_wxd), sboard_waddr)
+  //zxr: change from id stage to wb stage
+ // val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
+  val sboard_waddr =wb_waddr
+  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   // wzw:vset can't bypass until the wb stage
@@ -1140,6 +1151,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
    //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
    //**
    (!id_ctrl.vector && vector_in_pipe) ||
+    ex_vector_wxd || mem_vector_wxd || wb_vector_wxd ||
     //**
     !clock_en ||
     id_do_fence ||
