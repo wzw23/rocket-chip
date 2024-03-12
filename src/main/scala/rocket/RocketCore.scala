@@ -339,9 +339,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
  //  id_ctrl.wxd := true.B
  //}
   //zxr: add for set scoreboard of vector instruction
-  val ex_vector_wxd = Reg(Bool())
-  val mem_vector_wxd = Reg(Bool())
-  val wb_vector_wxd = Reg(Bool())
+  val ex_vector_wxd = RegInit(false.B)
+  val mem_vector_wxd = RegInit(false.B)
+  val wb_vector_wxd = RegInit(false.B)
   
   val lgNXRegs = if (coreParams.useRVE) 4 else 5
   val regAddrMask = (1 << lgNXRegs) - 1
@@ -665,7 +665,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   }.elsewhen (ex_pc_valid) {
     mem_ctrl := ex_ctrl
     //zxr:
-    ex_vector_wxd := mem_vector_wxd
+    mem_vector_wxd := ex_vector_wxd
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
     mem_reg_rvc := ex_reg_rvc
@@ -761,7 +761,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   when (mem_pc_valid) {
     wb_ctrl := mem_ctrl
     //zxr:
-    mem_vector_wxd := wb_vector_wxd
+    wb_vector_wxd := mem_vector_wxd
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
       Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
@@ -1072,7 +1072,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //zxr: change from id stage to wb stage
  // val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
   val sboard_waddr =wb_waddr
-  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd), sboard_waddr)
+  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd && wb_reg_valid), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   // wzw:vset can't bypass until the wb stage
@@ -1151,7 +1151,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
    //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
    //**
    (!id_ctrl.vector && vector_in_pipe) ||
-    ex_vector_wxd || mem_vector_wxd || wb_vector_wxd ||
+      (ex_vector_wxd&&ex_reg_valid) || (mem_vector_wxd&&mem_reg_valid) || (wb_vector_wxd&wb_reg_valid) ||
     //**
     !clock_en ||
     id_do_fence ||
