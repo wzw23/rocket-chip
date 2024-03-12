@@ -7,6 +7,7 @@ import freechips.rocketchip.tile._
 import scala.collection.mutable.ArrayBuffer
 
 class VEROUTIO(implicit p: Parameters) extends CoreBundle()(p) {
+  val commit_start = Output(UInt(NRET.W))
   val commit_valid = Output(UInt(NRET.W))
   val commit_prevPc = Output(UInt((NRET*xLen).W))
   val commit_currPc = Output(UInt((NRET*xLen).W))
@@ -218,6 +219,7 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   q.io.in.valid := RegNext(io.uvm_in.wb_reg_valid & io.uvm_in.wb_ctrl.vector)
   q.io.out.ready := io.uvm_in.vpu_commit_vld
   //
+  io.uvm_out.commit_start := RegEnable(1.B, 0.B, coreParams.useVerif.B&(io.uvm_in.wb_reg_valid)&(io.uvm_out.commit_prevPc === "h8000_0000".U))
   io.uvm_out.commit_valid := RegEnable(((io.uvm_in.wb_reg_valid)&(~io.uvm_in.wb_ctrl.vector))||io.uvm_in.vpu_commit_vld , 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_prevPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.prePc,io.uvm_in.wb_reg_pc), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_currPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.currPc,wb_npc), 0.U, coreParams.useVerif.B)

@@ -339,9 +339,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
  //  id_ctrl.wxd := true.B
  //}
   //zxr: add for set scoreboard of vector instruction
-  val ex_vector_wxd = Reg(Bool())
-  val mem_vector_wxd = Reg(Bool())
-  val wb_vector_wxd = Reg(Bool())
+  val ex_vector_wxd = RegInit(false.B)
+  val mem_vector_wxd = RegInit(false.B)
+  val wb_vector_wxd = RegInit(false.B)
   
   val lgNXRegs = if (coreParams.useRVE) 4 else 5
   val regAddrMask = (1 << lgNXRegs) - 1
@@ -396,7 +396,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_ctrl.scie && !(id_scie_decoder.unpipelined || id_scie_decoder.pipelined) ||
     id_csr_en && (csr.io.decode(0).read_illegal || !id_csr_ren && csr.io.decode(0).write_illegal) ||
     !ibuf.io.inst(0).bits.rvc && (id_system_insn && csr.io.decode(0).system_illegal) ||
-    id_illegal_rnum || 
+    id_illegal_rnum ||
     vfp_illegal_inst ||
     id_ctrl.vector && csr.io.decode(0).vector_illegal
   val id_virtual_insn = id_ctrl.legal &&
@@ -1081,8 +1081,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   // TODO:译码部分加入对id_wen的译码
   //zxr: change from id stage to wb stage
  // val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
-  val sboard_waddr = wb_waddr
-  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd), sboard_waddr)
+  val sboard_waddr =wb_waddr
+  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd && wb_reg_valid), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   // wzw:vset can't bypass until the wb stage
@@ -1161,7 +1161,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
    //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
    //**
    (!id_ctrl.vector && vector_in_pipe) ||
-    ex_vector_wxd || mem_vector_wxd || wb_vector_wxd ||
+      (ex_vector_wxd&&ex_reg_valid) || (mem_vector_wxd&&mem_reg_valid) || (wb_vector_wxd&wb_reg_valid) ||
     //**
     !clock_en ||
     id_do_fence ||
