@@ -10,6 +10,7 @@ class VEROUTTOPIO(implicit p: Parameters) extends Bundle() {
   val vLen = 128
   val NTRAP = 1
   //定义NRET=1 xLen=64 fLen=64 vLen=128 NTRAP=1
+  val commit_start = Output(UInt(NRET.W))
   val commit_valid = Output(UInt(NRET.W))
   val commit_prevPc = Output(UInt((NRET*xLen).W))
   val commit_currPc = Output(UInt((NRET*xLen).W))
