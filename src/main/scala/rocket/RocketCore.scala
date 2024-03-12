@@ -342,6 +342,13 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_vector_wxd = RegInit(false.B)
   val mem_vector_wxd = RegInit(false.B)
   val wb_vector_wxd = RegInit(false.B)
+
+  //zxr:add the set condition of fp_sboard
+  val id_vector_wfd = id_inst(0) === VFMV_F_S
+ //zxr: add for set scoreboard of vector instruction which need to write fp regfile
+  val ex_vector_wfd = RegInit(false.B)
+  val mem_vector_wfd = RegInit(false.B)
+  val wb_vector_wfd = RegInit(false.B)
   
   val lgNXRegs = if (coreParams.useRVE) 4 else 5
   val regAddrMask = (1 << lgNXRegs) - 1
@@ -564,6 +571,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     ex_ctrl := id_ctrl
     //zxr:
     ex_vector_wxd := id_vector_wxd
+    ex_vector_wfd := id_vector_wfd
     ex_reg_rvc := ibuf.io.inst(0).bits.rvc
     ex_ctrl.csr := id_csr
     ex_scie_unpipelined := id_ctrl.scie && id_scie_decoder.unpipelined
@@ -676,6 +684,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     mem_ctrl := ex_ctrl
     //zxr:
     mem_vector_wxd := ex_vector_wxd
+    mem_vector_wfd := ex_vector_wfd
     mem_scie_unpipelined := ex_scie_unpipelined
     mem_scie_pipelined := ex_scie_pipelined
     mem_reg_rvc := ex_reg_rvc
@@ -772,6 +781,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     wb_ctrl := mem_ctrl
     //zxr:
     wb_vector_wxd := mem_vector_wxd
+    wb_vector_wfd := mem_vector_wfd
     wb_reg_sfence := mem_reg_sfence
     wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
       Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
@@ -1107,14 +1117,12 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val fp_data_hazard_wb = id_ctrl.fp && wb_ctrl.wfd && checkHazards(fp_hazard_targets, _ === wb_waddr)
   val id_wb_hazard = wb_reg_valid && (data_hazard_wb && wb_set_sboard || fp_data_hazard_wb)
 
-  //zxr:add the set condition of fp_sboard
-  val id_vector_wfd = id_inst(0) === VFMV_F_S
 
   //wzw:add vpu_w_fpr to clear sboard
   val vpu_w_fpr= (io.vpu_commit.commit_vld & io.vpu_commit.return_data_float_vld)
   val id_stall_fpu = if (usingFPU) {
     val fp_sboard = new Scoreboard(32)
-    fp_sboard.set((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid || id_vector_wfd, Mux(id_vector_wfd,id_waddr,wb_waddr))
+    fp_sboard.set((wb_dcache_miss && wb_ctrl.wfd || io.fpu.sboard_set) && wb_valid || wb_vector_wfd && wb_reg_valid, wb_waddr)
     fp_sboard.clear(dmem_resp_replay && dmem_resp_fpu, dmem_resp_waddr)
     fp_sboard.clear(io.fpu.sboard_clr, io.fpu.sboard_clra)
     //wzw: fp clear sboard
@@ -1161,7 +1169,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
    //zxr : prevent scalar instruction from entering pipeline until the vector instructions are processed completely
    //**
    (!id_ctrl.vector && vector_in_pipe) ||
-      (ex_vector_wxd&&ex_reg_valid) || (mem_vector_wxd&&mem_reg_valid) || (wb_vector_wxd&wb_reg_valid) ||
+      (ex_vector_wxd&&ex_reg_valid) || (mem_vector_wxd&&mem_reg_valid) || (wb_vector_wxd && wb_reg_valid) ||
+       (ex_vector_wfd && ex_reg_valid) || (mem_vector_wfd && mem_reg_valid) || (wb_vector_wfd && wb_reg_valid) ||
     //**
     !clock_en ||
     id_do_fence ||
