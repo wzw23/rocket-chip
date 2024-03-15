@@ -1224,7 +1224,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.imem.bht_update.bits.branch := mem_ctrl.branch
   io.imem.bht_update.bits.prediction := mem_reg_btb_resp.bht
 
-  io.fpu.valid := !ctrl_killd && (id_ctrl.fp || id_ctrl.vector) // allow vector instruction
+  io.fpu.valid := !ctrl_killd && id_ctrl.fp || id_ctrl.vector // allow vector instruction
   io.fpu.killx := ctrl_killx
   io.fpu.killm := killm_common
   io.fpu.inst := id_inst(0)
