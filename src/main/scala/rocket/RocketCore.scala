@@ -405,7 +405,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     !ibuf.io.inst(0).bits.rvc && (id_system_insn && csr.io.decode(0).system_illegal) ||
     id_illegal_rnum ||
     vfp_illegal_inst ||
-    id_ctrl.vector && csr.io.decode(0).vector_illegal
+    id_ctrl.vector && csr.io.decode(0).vector_illegal ||
+    id_ctrl.vector && csr.io.vector.get.vstart =/= 0.U
   val id_virtual_insn = id_ctrl.legal &&
     ((id_csr_en && !(!id_csr_ren && csr.io.decode(0).write_illegal) && csr.io.decode(0).virtual_access_illegal) ||
      (!ibuf.io.inst(0).bits.rvc && id_system_insn && csr.io.decode(0).virtual_system_illegal))
@@ -1223,7 +1224,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.imem.bht_update.bits.branch := mem_ctrl.branch
   io.imem.bht_update.bits.prediction := mem_reg_btb_resp.bht
 
-  io.fpu.valid := !ctrl_killd && id_ctrl.fp || id_ctrl.vector // allow vector instruction
+  io.fpu.valid := !ctrl_killd && (id_ctrl.fp || id_ctrl.vector) // allow vector instruction
   io.fpu.killx := ctrl_killx
   io.fpu.killm := killm_common
   io.fpu.inst := id_inst(0)
