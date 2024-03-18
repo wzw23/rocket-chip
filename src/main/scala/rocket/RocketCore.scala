@@ -1072,7 +1072,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     iobpw.action := bp.control.action
   }
 
-  val hazard_targets = Seq((id_ctrl.rxs1 && id_raddr1 =/= 0.U, id_raddr1),
+  val hazard_targets = Seq(((id_ctrl.rxs1 || id_ctrl.vector) && id_raddr1 =/= 0.U, id_raddr1), 
                            (id_ctrl.rxs2 && id_raddr2 =/= 0.U, id_raddr2),  
                            ((id_ctrl.wxd || id_vector_wxd)  && id_waddr  =/= 0.U, id_waddr))  //zxr: add for vector inst which need to write to the integer register
   val fp_hazard_targets = Seq((io.fpu.dec.ren1 || id_ctrl.vector, id_raddr1),   //zxr: add for vector inst
@@ -1115,9 +1115,10 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   id_load_use := mem_reg_valid && data_hazard_mem && mem_ctrl.mem
 
   // stall for RAW/WAW hazards on load/AMO misses and mul/div in writeback.
-  val data_hazard_wb = (wb_ctrl.wxd || wb_vector_wxd ) && checkHazards(hazard_targets, _ === wb_waddr)
+  val data_hazard_wb = wb_ctrl.wxd && checkHazards(hazard_targets, _ === wb_waddr)
+  val data_hazard_wb_vector = wb_vector_wxd && checkHazards(hazard_targets, _ === wb_waddr) // stall for RAW/WAW hazards on vector in WB 
   val fp_data_hazard_wb = id_ctrl.fp && wb_ctrl.wfd && checkHazards(fp_hazard_targets, _ === wb_waddr) || id_ctrl.vector && (wb_ctrl.wfd || wb_vector_wfd) && checkHazards(fp_hazard_targets, _ === wb_waddr)
-  val id_wb_hazard = wb_reg_valid && (data_hazard_wb && wb_set_sboard || fp_data_hazard_wb) //TODO:need to change the wb_set_sboard
+  val id_wb_hazard = wb_reg_valid && (data_hazard_wb && wb_set_sboard || fp_data_hazard_wb || data_hazard_wb_vector)  
 
 
   //wzw:add vpu_w_fpr to clear sboard
