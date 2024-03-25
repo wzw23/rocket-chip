@@ -405,8 +405,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     !ibuf.io.inst(0).bits.rvc && (id_system_insn && csr.io.decode(0).system_illegal) ||
     id_illegal_rnum ||
     vfp_illegal_inst ||
-    id_ctrl.vector && csr.io.decode(0).vector_illegal ||
-    id_ctrl.vector && csr.io.vector.get.vstart =/= 0.U
+    id_ctrl.vector && csr.io.decode(0).vector_illegal
+//    ||
+//    id_ctrl.vector && csr.io.vector.get.vstart =/= 0.U
   val id_virtual_insn = id_ctrl.legal &&
     ((id_csr_en && !(!id_csr_ren && csr.io.decode(0).write_illegal) && csr.io.decode(0).virtual_access_illegal) ||
      (!ibuf.io.inst(0).bits.rvc && id_system_insn && csr.io.decode(0).virtual_system_illegal))
@@ -919,7 +920,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
 
 //zxr: issue queue
-val vectorQueue = Module(new InsructionQueue(8))
+val vectorQueue = Module(new InsructionQueue(12))
 
 vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector 
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
@@ -1012,7 +1013,13 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   csr.io.interrupts := io.interrupts
   csr.io.hartid := io.hartid
   io.fpu.fcsr_rm := csr.io.fcsr_rm
+  //add vpu fflags process
+  when(!io.vpu_commit.commit_vld){
   csr.io.fcsr_flags := io.fpu.fcsr_flags
+  }.otherwise{
+  csr.io.fcsr_flags.valid := true.B
+  csr.io.fcsr_flags.bits := io.vpu_commit.fflags
+  }
   io.fpu.time := csr.io.time(31,0)
   io.fpu.hartid := io.hartid
   csr.io.rocc_interrupt := io.rocc.interrupt

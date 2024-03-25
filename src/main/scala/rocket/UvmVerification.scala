@@ -204,7 +204,7 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
       val out = Decoupled(new UvmQueueSignal)
       val cnt = Output(UInt(4.W))
     })
-    val q = Module(new Queue(new UvmQueueSignal,entries = 8))
+    val q = Module(new Queue(new UvmQueueSignal,entries = 20))
     q.io.enq <> io.in
     io.out <> q.io.deq
     io.cnt <> q.io.count
