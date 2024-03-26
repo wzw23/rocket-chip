@@ -18,6 +18,14 @@ sim_vsrcs = \
     $(vsrc)/SimDTM.v \
     $(vsrc)/SimJTAG.v \
     $(vsrc)/debug_rob.v \
+    $(vsrc)/aes_rtl_128/aes_core.v \
+    $(vsrc)/aes_rtl_128/aes_decipher_block.v \
+    $(vsrc)/aes_rtl_128/aes_encipher_block.v \
+    $(vsrc)/aes_rtl_128/aes_inv_sbox.v \
+    $(vsrc)/aes_rtl_128/key_ass.v \
+    $(vsrc)/aes_rtl_128/aes_sbox.v \
+    $(vsrc)/aes_key_mem.v \
+    $(vsrc)/aes_core_standard.v \
     $(bb_vsrcs)
 
 # C sources
