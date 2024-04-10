@@ -1392,7 +1392,6 @@ if(coreParams.useVerif) {
 
   dontTouch(io.verif.get)
   io.verif.get <> ver_module.io.uvm_out
-  BoringUtils.addSource(io.verif.get, "wzw_uvm_out")
 }
 
   if (rocketParams.clockGate) {

@@ -15,15 +15,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
-#define WZW_DIFF 0
-#if WZW_DIFF
-#include "wzw_diff.h"
-extern "C" void inchi_difftest_set_reg(uint64_t arr[154]);
-extern "C" void inchi_difftest_get_reg(uint64_t arr[154]);
-
-
-#endif
-
 
 // For option parsing, which is split across this file, Verilog, and
 // FESVR's HTIF, a few external files must be pulled in. The list of
@@ -118,15 +109,6 @@ EMULATOR DEBUG OPTIONS (only supported in debug build -- try `make debug`)\n",
 
 int main(int argc, char** argv)
 {
-
-//打印出argv所有的参数
-
-  uint64_t arr[154];
-#if WZW_DIFF
-  fprintf(stderr,"spike load files: %s\n",argv[argc-1]);
-  printf("spike load files: %s\n",argv[argc-1]);
-  wzw_difftest_init(argv[argc-1]);
-#endif
   unsigned random_seed = (unsigned)time(NULL) ^ (unsigned)getpid();
   uint64_t max_cycles = -1;
   int ret = 0;
@@ -320,126 +302,6 @@ done_processing:
       tfp->dump(static_cast<vluint64_t>(trace_count * 2 + 1));
 #endif
     trace_count++;
-//wzw add for diff
-      static int open_diff=0;
-#if WZW_DIFF
-      static uint64_t dut_arr[154];
-      static uint64_t spike_arr[154];
-      if((tile->io_uvm_out_sim_halt==1)&&tile->io_uvm_out_commit_valid&&(open_diff==1)){
-        fprintf(stderr,"--------------------------diff_success----------------------------------\n");
-        printf("file name =%s,diff success\n",argv[argc-1]);
-        break;
-      }
-//      inchi_difftest_get_reg(spike_arr);
-
-      if(tile->io_uvm_out_commit_prevPc==0x80000000&&tile->io_uvm_out_commit_valid){
-          open_diff = 1;
-          dut_arr[6] = tile->io_uvm_out_commit_prevPc;
-          dut_arr[7] = tile->io_uvm_out_commit_currPc;
-
-      		for(int i=0;i<31;i++){
-          	dut_arr[i+122+1] =     	dut_arr[i+122+1] = ((uint64_t)tile->io_uvm_out_reg_gpr[1+i*2] << 32) | tile->io_uvm_out_reg_gpr[i*2];
-      		//`uvm_info(get_type_name(),$sformatf(" verif_reg_gpr_arr=%0h,verif_reg_gpr=%0h", data_exp_tr.verif_reg_gpr_arr[i],vif.verif_reg_gpr[64*i+:64]),UVM_NONE);
-      	  }
-          for(int i=0;i<32;i++)
-          	dut_arr[90+i] = ((uint64_t)tile->io_uvm_out_reg_fpr[1+i*2] << 32) | tile->io_uvm_out_reg_fpr[i*2];
-            for(int i=0;i<32;i++){
-            	dut_arr[90+i] = ((uint64_t)tile->io_uvm_out_reg_fpr[1+i*2] << 32) | tile->io_uvm_out_reg_fpr[i*2];
-            	uint128_t value = ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+3] << 96) |
-                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+2] << 64) |
-                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+1] << 32) |
-                                  tile->io_uvm_out_reg_vpr[4*i];
-                  dut_arr[2*i+26] = value & 0xFFFFFFFFFFFFFFFF; // 取低64位
-                  dut_arr[2*i+27] = (value >> 64) & 0xFFFFFFFFFFFFFFFF; // 取高64位
-    }
-
-
-        dut_arr[24] =   tile->io_uvm_out_csr_mstatusWr  ;
-        dut_arr[22] =   tile->io_uvm_out_csr_mepcWr     ;
-        dut_arr[20] =   tile->io_uvm_out_csr_mtvalWr    ;
-        dut_arr[18] =   tile->io_uvm_out_csr_mtvecWr    ;
-        dut_arr[16] =   tile->io_uvm_out_csr_mcauseWr   ;
-        dut_arr[13] =   tile->io_uvm_out_csr_mipWr      ;
-        dut_arr[12] =   tile->io_uvm_out_csr_mieWr      ;
-        dut_arr[11] =   tile->io_uvm_out_csr_mscratchWr ;
-        dut_arr[9]  =   tile->io_uvm_out_csr_midelegWr  ;
-        dut_arr[8]  =   tile->io_uvm_out_csr_medelegWr  ;
-        dut_arr[5]  =   tile->io_uvm_out_csr_minstretWr+1 ;
-        dut_arr[23] =   tile->io_uvm_out_csr_sstatusWr  ;
-        dut_arr[21] =   tile->io_uvm_out_csr_sepcWr     ;
-        dut_arr[19] =   tile->io_uvm_out_csr_stvalWr    ;
-        dut_arr[17] =   tile->io_uvm_out_csr_stvecWr    ;
-        dut_arr[15] =   tile->io_uvm_out_csr_scauseWr   ;
-        dut_arr[14] =   tile->io_uvm_out_csr_satpWr     ;
-        dut_arr[10] =   tile->io_uvm_out_csr_sscratchWr ;
-        dut_arr[4]  =   tile->io_uvm_out_csr_vtypeWr    ;
-        dut_arr[3]  =   tile->io_uvm_out_csr_vcsrWr     ;
-        dut_arr[2]  =   tile->io_uvm_out_csr_vlWr       ;
-        dut_arr[1]  =   tile->io_uvm_out_csr_vstartWr   ;
-        inchi_difftest_set_reg(dut_arr);
-        fprintf(stderr,"synchronous complete\n");
-}
-
-if((open_diff==1)&&tile->io_uvm_out_commit_valid&&(tile->io_uvm_out_sfma==0)){
-  dut_arr[6] = tile->io_uvm_out_commit_prevPc;
-            dut_arr[7] = tile->io_uvm_out_commit_currPc;
-
-        		for(int i=0;i<31;i++){
-            	dut_arr[i+122+1] = ((uint64_t)tile->io_uvm_out_reg_gpr[1+i*2] << 32) | tile->io_uvm_out_reg_gpr[i*2];
-        		//`uvm_info(get_type_name(),$sformatf(" verif_reg_gpr_arr=%0h,verif_reg_gpr=%0h", data_exp_tr.verif_reg_gpr_arr[i],vif.verif_reg_gpr[64*i+:64]),UVM_NONE);
-        	  }
-            for(int i=0;i<32;i++){
-            	dut_arr[90+i] = ((uint64_t)tile->io_uvm_out_reg_fpr[1+i*2] << 32) | tile->io_uvm_out_reg_fpr[i*2];
-            	uint128_t value = ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+3] << 96) |
-                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+2] << 64) |
-                                  ((uint128_t)tile->io_uvm_out_reg_vpr[4*i+1] << 32) |
-                                  tile->io_uvm_out_reg_vpr[4*i];
-                  dut_arr[2*i+26] = value & 0xFFFFFFFFFFFFFFFF; // 取低64位
-                  dut_arr[2*i+27] = (value >> 64) & 0xFFFFFFFFFFFFFFFF; // 取高64位
-      }
-
-
-          dut_arr[24] =   tile->io_uvm_out_csr_mstatusWr  ;
-          dut_arr[22] =   tile->io_uvm_out_csr_mepcWr     ;
-          dut_arr[20] =   tile->io_uvm_out_csr_mtvalWr    ;
-          dut_arr[18] =   tile->io_uvm_out_csr_mtvecWr    ;
-          dut_arr[16] =   tile->io_uvm_out_csr_mcauseWr   ;
-          dut_arr[13] =   tile->io_uvm_out_csr_mipWr      ;
-          dut_arr[12] =   tile->io_uvm_out_csr_mieWr      ;
-          dut_arr[11] =   tile->io_uvm_out_csr_mscratchWr ;
-          dut_arr[9]  =   tile->io_uvm_out_csr_midelegWr  ;
-          dut_arr[8]  =   tile->io_uvm_out_csr_medelegWr  ;
-          dut_arr[5]  =   tile->io_uvm_out_csr_minstretWr ;
-          dut_arr[23] =   tile->io_uvm_out_csr_sstatusWr  ;
-          dut_arr[21] =   tile->io_uvm_out_csr_sepcWr     ;
-          dut_arr[19] =   tile->io_uvm_out_csr_stvalWr    ;
-          dut_arr[17] =   tile->io_uvm_out_csr_stvecWr    ;
-          dut_arr[15] =   tile->io_uvm_out_csr_scauseWr   ;
-          dut_arr[14] =   tile->io_uvm_out_csr_satpWr     ;
-          dut_arr[10] =   tile->io_uvm_out_csr_sscratchWr ;
-          dut_arr[4]  =   tile->io_uvm_out_csr_vtypeWr    ;
-          dut_arr[3]  =   tile->io_uvm_out_csr_vcsrWr     ;
-          dut_arr[2]  =   tile->io_uvm_out_csr_vlWr       ;
-          dut_arr[1]  =   tile->io_uvm_out_csr_vstartWr   ;
-          dut_arr[0] = tile->io_uvm_out_commit_insn;
-          if(wzw_difftest_diff_and_exec(dut_arr)==0){
-              fprintf(stderr,"diff success now_pc=%lx\n",tile->io_uvm_out_commit_prevPc);
-            }
-            else{
-                fprintf(stderr,"diff fail\n");
-                printf("file name =%s,diff fail\n",argv[argc-1]);
-                break;
-          }
-  }
-  else if((open_diff==1)&&tile->io_uvm_out_commit_valid&&(tile->io_uvm_out_sfma==1)){
-    inchi_difftest_exec();
-  }
-  if(open_diff){
-    tile->io_close_debug =1;
-  }
-  else
-    tile->io_close_debug =0;
-  #endif
   }
 
 #if VM_TRACE

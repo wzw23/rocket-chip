@@ -30,8 +30,7 @@ module SimDTM(
   input  [ 1:0] debug_resp_bits_resp,
   input  [31:0] debug_resp_bits_data,
 
-  output [31:0] exit,
-  input         close_debug
+  output [31:0] exit
 );
 
   bit r_reset;
@@ -56,20 +55,12 @@ module SimDTM(
   reg [31:0] exit_reg;
 
   always @(posedge clk) begin
-    if(!close_debug)begin
     debug_req_valid_reg <= __debug_req_valid;
     debug_req_bits_addr_reg <= __debug_req_bits_addr[6:0];
     debug_req_bits_op_reg <= __debug_req_bits_op[1:0];
     debug_req_bits_data_reg <= __debug_req_bits_data[31:0];
     debug_resp_ready_reg <= __debug_resp_ready;
     exit_reg <= __exit;
-    end
-    else begin
-      debug_req_bits_data_reg <= 0;
-      debug_req_bits_op_reg <=0;
-      debug_req_bits_addr_reg <= 0;
-      debug_req_valid_reg <=0;
-    end
   end
 
   assign debug_req_valid = debug_req_valid_reg;
