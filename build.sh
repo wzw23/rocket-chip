@@ -9,4 +9,5 @@ sed -i '/object FCMA extends App {/,/^}/d' ./src/main/scala/smartvector/darecree
 # ./src/main/scala/smartvector/darecreek/exu/fu/fp/fudian/FCMA.scala
 # ./src/main/scala/smartvector/darecreek/exu/vfu/fp/fudian/FCMA.scala
 # 注释对象： object FCMA extends App
+ 
 
