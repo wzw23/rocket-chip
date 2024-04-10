@@ -1079,13 +1079,13 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     iobpw.action := bp.control.action
   }
 
-  val hazard_targets = Seq((id_ctrl.rxs1 && id_raddr1 =/= 0.U, id_raddr1),
-                           (id_ctrl.rxs2 && id_raddr2 =/= 0.U, id_raddr2),
-                           (id_ctrl.wxd  && id_waddr  =/= 0.U, id_waddr))
+  val hazard_targets = Seq(((id_ctrl.rxs1 || id_ctrl.vector) && id_raddr1 =/= 0.U, id_raddr1), 
+                           (id_ctrl.rxs2 && id_raddr2 =/= 0.U, id_raddr2),  
+                           ((id_ctrl.wxd || id_vector_wxd)  && id_waddr  =/= 0.U, id_waddr))  //zxr: add for vector inst which need to write to the integer register
   val fp_hazard_targets = Seq((io.fpu.dec.ren1 || id_ctrl.vector, id_raddr1),   //zxr: add for vector inst
                               (io.fpu.dec.ren2, id_raddr2),
                               (io.fpu.dec.ren3, id_raddr3),
-                              (io.fpu.dec.wen, id_waddr))
+                              (io.fpu.dec.wen || id_vector_wfd, id_waddr))  
 
   val sboard = new Scoreboard(32, true)
   sboard.clear(ll_wen, ll_waddr)
@@ -1104,27 +1104,28 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   // wzw:vset can't bypass until the wb stage
-  val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined ||ex_ctrl.vset
-  val data_hazard_ex = ex_ctrl.wxd && checkHazards(hazard_targets, _ === ex_waddr)
+  val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined ||ex_ctrl.vset || ex_ctrl.vector  //zxr: vector instructions cannot bypass
+  val data_hazard_ex = (ex_ctrl.wxd || ex_vector_wxd ) && checkHazards(hazard_targets, _ === ex_waddr)  //zxr: some of the vector instructions may need to write to the integer register
   // zxr: add for vector inst read fp regfile 
   val fp_data_hazard_ex = id_ctrl.fp && ex_ctrl.wfd && checkHazards(fp_hazard_targets, _ === ex_waddr) || id_ctrl.vector && (ex_ctrl.wfd || ex_vector_wfd) && checkHazards(fp_hazard_targets, _ === ex_waddr)
-  val id_ex_hazard = ex_reg_valid && (data_hazard_ex && ex_cannot_bypass || fp_data_hazard_ex) 
+  val id_ex_hazard = ex_reg_valid && (data_hazard_ex && ex_cannot_bypass || fp_data_hazard_ex)  
 
   // stall for RAW/WAW hazards on CSRs, LB/LH, and mul/div in memory stage.
   val mem_mem_cmd_bh =
     if (fastLoadWord) (!fastLoadByte).B && mem_reg_slow_bypass
     else true.B
   // wzw:vset can't bypass until the wb stage
-  val mem_cannot_bypass = mem_ctrl.csr =/= CSR.N || mem_ctrl.mem && mem_mem_cmd_bh || mem_ctrl.mul || mem_ctrl.div || mem_ctrl.fp || mem_ctrl.rocc || mem_ctrl.vset
-  val data_hazard_mem = mem_ctrl.wxd && checkHazards(hazard_targets, _ === mem_waddr)
+  val mem_cannot_bypass = mem_ctrl.csr =/= CSR.N || mem_ctrl.mem && mem_mem_cmd_bh || mem_ctrl.mul || mem_ctrl.div || mem_ctrl.fp || mem_ctrl.rocc || mem_ctrl.vset || mem_ctrl.vector   //zxr: vector instructions cannot bypass
+  val data_hazard_mem = (mem_ctrl.wxd || mem_vector_wxd ) && checkHazards(hazard_targets, _ === mem_waddr)
   val fp_data_hazard_mem = id_ctrl.fp && mem_ctrl.wfd && checkHazards(fp_hazard_targets, _ === mem_waddr) || id_ctrl.vector && (mem_ctrl.wfd || mem_vector_wfd) && checkHazards(fp_hazard_targets, _ === mem_waddr)
   val id_mem_hazard = mem_reg_valid && (data_hazard_mem && mem_cannot_bypass || fp_data_hazard_mem)
   id_load_use := mem_reg_valid && data_hazard_mem && mem_ctrl.mem
 
   // stall for RAW/WAW hazards on load/AMO misses and mul/div in writeback.
   val data_hazard_wb = wb_ctrl.wxd && checkHazards(hazard_targets, _ === wb_waddr)
+  val data_hazard_wb_vector = wb_vector_wxd && checkHazards(hazard_targets, _ === wb_waddr) // stall for RAW/WAW hazards on vector in WB 
   val fp_data_hazard_wb = id_ctrl.fp && wb_ctrl.wfd && checkHazards(fp_hazard_targets, _ === wb_waddr) || id_ctrl.vector && (wb_ctrl.wfd || wb_vector_wfd) && checkHazards(fp_hazard_targets, _ === wb_waddr)
-  val id_wb_hazard = wb_reg_valid && (data_hazard_wb && wb_set_sboard || fp_data_hazard_wb)
+  val id_wb_hazard = wb_reg_valid && (data_hazard_wb && wb_set_sboard || fp_data_hazard_wb || data_hazard_wb_vector)  
 
 
   //wzw:add vpu_w_fpr to clear sboard
