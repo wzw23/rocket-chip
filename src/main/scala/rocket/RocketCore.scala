@@ -818,10 +818,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
                             VL4RE8_V, VL4RE16_V, VL4RE32_V, VL4RE64_V,
                             VL8RE8_V, VL8RE16_V, VL8RE32_V, VL8RE64_V,
                             VS1R_V, VS2R_V, VS4R_V, VS8R_V)
-
-  val whole_registor_vld_vst_inst = wholeregistorInstructions.contains(wb_reg_inst)
+  
+  val whole_registor_vld_vst_inst = wholeregistorInstructions.map(wb_reg_inst === _).reduce(_ || _)
   val whole_registor_vm_inst = wb_reg_inst ===  VMV1R_V || wb_reg_inst === VMV2R_V || wb_reg_inst === VMV4R_V || wb_reg_inst === VMV8R_V 
-  val wb_illegal_insn = wb_ctrl.vector && !(wb_ctrl.vset || whole_registor_vld_vst_inst.asBool() || whole_registor_vm_inst) && csr.io.vector.get.vconfig.vtype.vill
+  val wb_illegal_insn = wb_ctrl.vector && !(wb_ctrl.vset || whole_registor_vm_inst || whole_registor_vld_vst_inst) && csr.io.vector.get.vconfig.vtype.vill
   
   val (wb_xcpt:Bool, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
@@ -845,7 +845,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ma.st, Causes.misaligned_store.U),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.ma.ld, Causes.misaligned_load.U),
     //zxr: illegal xcpt
-    (wb_illegal_insn, Causes.illegal_instruction.U)
+    (wb_reg_valid && wb_illegal_insn, Causes.illegal_instruction.U)
     
   ))
    //wzw TODO:需要添加vpu dcache接口信号的传递
