@@ -934,7 +934,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 //zxr: issue queue
 val vectorQueue = Module(new InsructionQueue(12))
 
-vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector 
+vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
 vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
 vectorQueue.io.enqueueInfo.bits.v_fp_rs1 := wb_reg_fp_rs1
