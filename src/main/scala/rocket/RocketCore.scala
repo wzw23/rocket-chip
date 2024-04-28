@@ -1020,7 +1020,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   csr.io.decode(0).inst := id_inst(0)
   csr.io.exception := wb_xcpt
   csr.io.cause := wb_cause
-  csr.io.retire := wb_valid
+  //zxr: change retire signal for vpu
+  csr.io.retire := !wb_ctrl.vector && wb_valid ||  io.vpu_commit.commit_vld && !io.vpu_commit.exception_vld
   csr.io.inst(0) := (if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst)
   csr.io.interrupts := io.interrupts
   csr.io.hartid := io.hartid
