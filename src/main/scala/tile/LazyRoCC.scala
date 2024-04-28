@@ -30,12 +30,18 @@ class RoCCCommand(implicit p: Parameters) extends CoreBundle()(p) {
   val inst = new RoCCInstruction
   val rs1 = Bits(xLen.W)
   val rs2 = Bits(xLen.W)
+  //wzw add
+  val vs1 = Bits(128.W)
+  val vs2 = Bits(128.W)
   val status = new MStatus
-}
+  }
 
 class RoCCResponse(implicit p: Parameters) extends CoreBundle()(p) {
+  val w_vector = Bool()
   val rd = Bits(5.W)
   val data = Bits(xLen.W)
+  val vd = Bits(5.W)
+  val vdata = Bits(128.W)
 }
 
 class RoCCCoreIO(val nRoCCCSRs: Int = 0)(implicit p: Parameters) extends CoreBundle()(p) {

@@ -202,5 +202,6 @@ trait HasCoreIO extends HasTileParameters {
     val vpu_commit = Flipped(new RVUCommit)
     val vpu_rfdata = Input(Vec(32, UInt(128.W)))
     val vpu_memory = Flipped(new RVUMemory)
+    val vpu_custom = Flipped(new RVUCustom)
   }
 }
