@@ -766,11 +766,13 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   // writeback stage
   //wzw:add for commit stage,Set it to 0 for now and connect to the vpu interface later.
   //TODO:添加commit修改vl逻辑
+
+  val svmqueue = Module(new VpuMessageQueue())
   val update_vl = WireDefault(0.U)
   val update_vstart = WireDefault(0.U)
   val update_vstart_data = WireDefault(0.U)
   //add exception and pc interface
-  val vpu_pc = WireDefault(0.U)
+  val vpu_pc = WireDefault(svmqueue.io.out.bits.s_v_pc)
   val vpu_mcause = WireDefault(0.U)
 
 
@@ -941,6 +943,10 @@ vectorQueue.io.enqueueInfo.bits.v_fp_rs1 := wb_reg_fp_rs1
 vectorQueue.io.enqueueInfo.bits.v_inst := wb_reg_inst
 vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
+  //wzw: save message
+  svmqueue.io.in.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);
+  svmqueue.io.in.bits.s_v_pc := wb_reg_pc
+  svmqueue.io.out.ready := io.vpu_commit.commit_vld
 
   //zxr: issue vector instructions during the WB stage
 
@@ -1113,7 +1119,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //zxr: change from id stage to wb stage
  // val sboard_waddr =Mux(id_vector_wxd, id_waddr,wb_waddr)
   val sboard_waddr =wb_waddr
-  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd && wb_reg_valid), sboard_waddr)
+  sboard.set((wb_set_sboard && wb_wen)||(wb_vector_wxd && wb_reg_valid && (!wb_xcpt)), sboard_waddr)
 
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   // wzw:vset can't bypass until the wb stage
@@ -1557,7 +1563,20 @@ if(coreParams.useVerif) {
   }
 }
 
-
+class SaveVpuMessage extends Bundle{
+  val s_v_pc = UInt(32.W)
+}
+class VpuMessageQueue extends Module {
+    val io = IO(new Bundle {
+      val in = Flipped(Decoupled(new SaveVpuMessage))
+      val out = Decoupled(new SaveVpuMessage)
+      val cnt = Output(UInt(4.W))
+    })
+    val q = Module(new Queue(new SaveVpuMessage,entries = 12))
+    q.io.enq <> io.in
+    io.out <> q.io.deq
+    io.cnt <> q.io.count
+  }
 //zxr
 class vectorInstInfo extends Bundle{
   val v_inst = UInt(32.W)

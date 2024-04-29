@@ -226,7 +226,7 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   io.uvm_out.commit_valid := RegEnable(((io.uvm_in.wb_reg_valid)&(~io.uvm_in.wb_ctrl.vector))||((io.uvm_in.wb_xcpt(0).asBool))||io.uvm_in.vpu_commit_vld , 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_prevPc := RegEnable(Mux(q.io.out.fire,q.io.out.bits.prePc,io.uvm_in.wb_reg_pc), 0.U, coreParams.useVerif.B)
   io.uvm_out.commit_currPc := Mux((io.uvm_out.commit_insn === (0x30200073.U)),io.uvm_out.csr_mepcWr,Mux(trap_valid(0).asBool,io.uvm_out.csr_mtvecWr,RegEnable(Mux(q.io.out.fire,q.io.out.bits.currPc,wb_npc), 0.U, coreParams.useVerif.B)))
-  io.uvm_out.csr_minstretWr := Mux(RegNext(q.io.out.fire),RegNext(q.io.out.bits.minstret),io.uvm_in.minstret)
+  io.uvm_out.csr_minstretWr := io.uvm_in.minstret
   io.uvm_out.commit_order := 0.U
   io.uvm_out.commit_insn := Mux(trap_valid(0).asBool,commit_insn_r,RegEnable(Mux(q.io.out.fire,q.io.out.bits.insn,wb_insn), 0.U, coreParams.useVerif.B))
   io.uvm_out.commit_fused := 0.U
