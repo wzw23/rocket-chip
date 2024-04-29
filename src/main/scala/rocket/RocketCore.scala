@@ -822,8 +822,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
                             VS1R_V, VS2R_V, VS4R_V, VS8R_V)
   
   val whole_registor_vld_vst_inst = wholeregistorInstructions.map(wb_reg_inst === _).reduce(_ || _)
-  val whole_registor_vm_inst = wb_reg_inst ===  VMV1R_V || wb_reg_inst === VMV2R_V || wb_reg_inst === VMV4R_V || wb_reg_inst === VMV8R_V 
-  val wb_illegal_insn = wb_ctrl.vector && !(wb_ctrl.vset || whole_registor_vm_inst || whole_registor_vld_vst_inst) && csr.io.vector.get.vconfig.vtype.vill
+  //val whole_registor_vm_inst = wb_reg_inst ===  VMV1R_V || wb_reg_inst === VMV2R_V || wb_reg_inst === VMV4R_V || wb_reg_inst === VMV8R_V 
+  val wb_illegal_insn = wb_ctrl.vector && !(wb_ctrl.vset || whole_registor_vld_vst_inst) && csr.io.vector.get.vconfig.vtype.vill
   
   val (wb_xcpt:Bool, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
@@ -1218,7 +1218,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.imem.flush_icache := wb_reg_valid && wb_ctrl.fence_i && !io.dmem.s2_nack
   io.imem.might_request := {
     //wzw:when ex_pc_valid and mem_pc_valid is false vector instruction might request
-    imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate || isvectorrun
+    imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate || isvectorrun && !io.vpu_commit.exception_vld
     imem_might_request_reg
   }
   io.imem.progress := RegNext(wb_reg_valid && !replay_wb_common)
