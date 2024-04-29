@@ -199,6 +199,65 @@ class AccumulatorExampleModuleImp(outer: AccumulatorExample)(implicit p: Paramet
   io.mem.req.bits.dprv := cmd.bits.status.dprv
   io.mem.req.bits.dv := cmd.bits.status.dv
 }
+class Accumulator_vcix_Example(opcodes: OpcodeSet, val n: Int = 4)(implicit p: Parameters) extends LazyRoCC(opcodes) {
+  override lazy val module = new Accumulator_vcix_ExampleModuleImp(this)
+}
+
+class Accumulator_vcix_ExampleModuleImp(outer: Accumulator_vcix_Example)(implicit p: Parameters) extends LazyRoCCModuleImp(outer)
+    with HasCoreParameters {
+  val v_wdata = regfile(0) + regfile(1)
+  val regfile = Mem(outer.n, UInt(xLen.W))
+  val busy = RegInit(VecInit(Seq.fill(outer.n){false.B}))
+  val regfile_vector =  Mem(2,UInt(128.W))
+  val cmd = Queue(io.cmd)
+  val funct = cmd.bits.inst.funct
+  val addr = cmd.bits.rs2(log2Up(outer.n)-1,0)
+  val doWrite = funct === 0.U
+  val doRead = funct === 1.U
+  val doLoad = funct === 2.U
+  val doAccum = funct === 3.U
+  val doRead_v = funct === "0x1000000".U
+  val doWrite_v = funct === "0x1000001".U
+  val doAccum_v = funct === "0x1000010".U
+  val memRespTag = io.mem.resp.bits.tag(log2Up(outer.n)-1,0)
+  val use_v = funct(6)
+
+  // datapath
+  val addend = cmd.bits.rs1
+  val accum = regfile(addr)
+  val wdata = Mux(doWrite, addend, accum + addend)
+
+  when (cmd.fire() && (doWrite || doAccum)) {
+    regfile(addr) := wdata
+  }
+
+  when (cmd.fire() && (doAccum_v || doWrite_v)) {
+    regfile_vector(0) := cmd.bits.vs1
+    regfile_vector(1) := cmd.bits.vs2
+  }
+
+  val doResp = cmd.bits.inst.xd
+  val stallReg = busy(addr)
+  val stallLoad = doLoad && !io.mem.req.ready
+  val stallResp = doResp && !io.resp.ready
+
+  cmd.ready := !stallReg && !stallLoad && !stallResp
+    // command resolved if no stalls AND not issuing a load that will need a request
+
+  // PROC RESPONSE INTERFACE
+  io.resp.valid := cmd.valid && doResp && !stallReg && !stallLoad
+    // valid response if valid command, need a response, and no stalls
+  io.resp.bits.rd := cmd.bits.inst.rd
+    // Must respond with the appropriate tag or undefined behavior
+  io.resp.bits.data := Mux(use_v,v_wdata,accum)
+    // Semantics is to always send out prior accumulator register value
+  io.resp.bits.w_vector := use_v
+
+  io.busy := cmd.valid || busy.reduce(_||_)
+    // Be busy when have pending memory requests or committed possibility of pending requests
+  io.interrupt := false.B
+    // Set this true to trigger an interrupt on the processor (please refer to supervisor documentation)
+  }
 
 class  TranslatorExample(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes, nPTWPorts = 1) {
   override lazy val module = new TranslatorExampleModuleImp(this)

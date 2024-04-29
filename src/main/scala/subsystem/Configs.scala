@@ -405,10 +405,10 @@ class WithHypervisor(hext: Boolean = true) extends Config((site, here, up) => {
 
 class WithRoccExample extends Config((site, here, up) => {
   case BuildRoCC => List(
-//    (p: Parameters) => {
-//        val accumulator = LazyModule(new AccumulatorExample(OpcodeSet.custom0, n = 4)(p))
-//        accumulator
-//    },
+    (p: Parameters) => {
+        val accumulator = LazyModule(new AccumulatorExample(OpcodeSet.custom0)(p))
+        accumulator
+    },
 //    (p: Parameters) => {
 //        val translator = LazyModule(new TranslatorExample(OpcodeSet.custom1)(p))
 //        translator
