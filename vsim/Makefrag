@@ -18,6 +18,14 @@ sim_vsrcs = \
     $(vsrc)/SimDTM.v \
     $(vsrc)/SimJTAG.v \
     $(vsrc)/debug_rob.v \
+    $(vsrc)/aes_rtl_128/aes_core.v \
+    $(vsrc)/aes_rtl_128/aes_decipher_block.v \
+    $(vsrc)/aes_rtl_128/aes_encipher_block.v \
+    $(vsrc)/aes_rtl_128/aes_inv_sbox.v \
+    $(vsrc)/aes_rtl_128/key_ass.v \
+    $(vsrc)/aes_rtl_128/aes_sbox.v \
+    $(vsrc)/aes_key_mem.v \
+    $(vsrc)/aes_core_standard.v \
     $(bb_vsrcs)
 
 # C sources
@@ -40,8 +48,7 @@ verilog: $(sim_vsrcs)
 # Build rules
 #--------------------------------------------------------------------
 
-VCS = vcs -full64 -cc gcc-5 -LDFLAGS -Wl,--no-as-needed -kdb -fsdb 
-#VCS = vcs -full64
+VCS = vcs -full64 -cc gcc-5 -LDFLAGS -Wl,--no-as-needed -kdb -fsdb
 
 VCS_OPTS = -notice -line +lint=all,noVCDE,noONGS,noUI -error=PCWM-L -timescale=1ns/10ps -quiet \
 	+rad +v2k +vcs+lic+wait \
@@ -61,7 +68,7 @@ VCS_OPTS = -notice -line +lint=all,noVCDE,noONGS,noUI -error=PCWM-L -timescale=1
 	+define+RANDOMIZE_INVALID_ASSIGN \
 	+define+RANDOMIZE_DELAY=0.1 \
 	+define+MODEL=$(MODEL) \
-	+define+FSDB+define+WAVES_FSDB+define+WAVES="fsdb"\
+    +define+FSDB+define+WAVES_FSDB+define+WAVES="fsdb"\
 	+libext+.v \
 
 #--------------------------------------------------------------------
@@ -73,7 +80,7 @@ $(simv) : $(sim_vsrcs) $(sim_csrcs)
 	cd $(sim_dir) && \
 	rm -rf csrc && \
 	$(VCS) $(VCS_OPTS) -o $(simv) \
-	-debug_access+all -lca\
+    -debug_access+all -lca\
 
 simv_debug = $(sim_dir)/simv-$(PROJECT)-$(CONFIG_STR)-debug
 $(simv_debug) : $(sim_vsrcs) $(sim_csrcs)

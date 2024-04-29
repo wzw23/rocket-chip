@@ -876,7 +876,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     //wzw 防止vpu产生的写后读问题
   //val id_set_sboard = id_ctrl.vector
   val replay_wb_common = (io.dmem.s2_nack && !vinst_accessing )|| wb_reg_replay
-  val replay_wb_rocc = wb_reg_valid && wb_ctrl.rocc && !io.rocc.cmd.ready
+  val replay_wb_rocc = wb_reg_valid && wb_ctrl.rocc && !io.rocc.cmd.ready 
   val replay_wb = replay_wb_common || replay_wb_rocc
   take_pc_wb := replay_wb || wb_xcpt || csr.io.eret || wb_reg_flush_pipe
 
@@ -973,9 +973,12 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
 
 
+  io.vpu_custom.resp.valid := (io.rocc.resp.valid && io.rocc.resp.bits.w_vector)
+  io.vpu_custom.resp.bits.vd := io.rocc.resp.bits.vd
+  io.vpu_custom.resp.bits.vdata := (io.rocc.resp.bits.vdata)
   if (usingRoCC) {
     io.rocc.resp.ready := !wb_wxd
-    when (io.rocc.resp.fire) {
+    when (io.rocc.resp.fire && (!io.rocc.resp.bits.w_vector)) {
       div.io.resp.ready := false.B
       ll_wdata := io.rocc.resp.bits.data
       ll_waddr := io.rocc.resp.bits.rd
@@ -1329,13 +1332,16 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.vpu_memory.xcpt.gf := io.dmem.s2_xcpt.gf
   io.vpu_memory.xcpt.ae := io.dmem.s2_xcpt.ae
 
-
-  io.rocc.cmd.valid := wb_reg_valid && wb_ctrl.rocc && !replay_wb_common
-  io.rocc.exception := wb_xcpt && csr.io.status.xs.orR
+  //wzw : add for rocc
+  io.vpu_custom.req.ready := io.rocc.cmd.ready
+  io.rocc.cmd.valid := (wb_reg_valid && wb_ctrl.rocc && (!wb_ctrl.vector) && !replay_wb_common) || io.vpu_custom.req.valid
+  io.rocc.exception := Mux(io.vpu_custom.req.fire,false.B,wb_xcpt && csr.io.status.xs.orR)
   io.rocc.cmd.bits.status := csr.io.status
-  io.rocc.cmd.bits.inst := wb_reg_inst.asTypeOf(new RoCCInstruction())
+  io.rocc.cmd.bits.inst := Mux(io.vpu_custom.req.fire,io.vpu_custom.req.bits.custom_vector_inst.asTypeOf(new RoCCInstruction()),wb_reg_inst.asTypeOf(new RoCCInstruction()))
   io.rocc.cmd.bits.rs1 := wb_reg_wdata
   io.rocc.cmd.bits.rs2 := wb_reg_rs2
+  io.rocc.cmd.bits.vs1 := io.vpu_custom.req.bits.vs1;
+  io.rocc.cmd.bits.vs2 := io.vpu_custom.req.bits.vs2;
 
   // gate the clock
   val unpause = csr.io.time(rocketParams.lgPauseCycles-1, 0) === 0.U || csr.io.inhibit_cycle || io.dmem.perf.release || take_pc

@@ -406,21 +406,27 @@ class WithHypervisor(hext: Boolean = true) extends Config((site, here, up) => {
 class WithRoccExample extends Config((site, here, up) => {
   case BuildRoCC => List(
     (p: Parameters) => {
-        val accumulator = LazyModule(new AccumulatorExample(OpcodeSet.custom0, n = 4)(p))
+        val accumulator = LazyModule(new AccumulatorExample(OpcodeSet.custom0)(p))
         accumulator
     },
+//    (p: Parameters) => {
+//        val translator = LazyModule(new TranslatorExample(OpcodeSet.custom1)(p))
+//        translator
+//    },
     (p: Parameters) => {
-        val translator = LazyModule(new TranslatorExample(OpcodeSet.custom1)(p))
-        translator
+      val aesstandardacc = LazyModule(new AesAccStandard(OpcodeSet.custom2)(p))
+      aesstandardacc
     },
     (p: Parameters) => {
-        val counter = LazyModule(new CharacterCountExample(OpcodeSet.custom2)(p))
-        counter
-    },
-    (p: Parameters) => {
-      val blackbox = LazyModule(new BlackBoxExample(OpcodeSet.custom3, "RoccBlackBox")(p))
-      blackbox
-    })
+        val aesacc = LazyModule(new AesAcc(OpcodeSet.custom3)(p))
+        aesacc
+    }
+  )
+//    ,
+//    (p: Parameters) => {
+//      val blackbox = LazyModule(new BlackBoxExample(OpcodeSet.custom3, "RoccBlackBox")(p))
+//      blackbox
+//    })
 })
 
 class WithDefaultBtb extends Config((site, here, up) => {
