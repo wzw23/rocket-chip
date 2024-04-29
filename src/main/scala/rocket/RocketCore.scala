@@ -820,8 +820,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
                             VS1R_V, VS2R_V, VS4R_V, VS8R_V)
   
   val whole_registor_vld_vst_inst = wholeregistorInstructions.map(wb_reg_inst === _).reduce(_ || _)
-  val whole_registor_vm_inst = wb_reg_inst ===  VMV1R_V || wb_reg_inst === VMV2R_V || wb_reg_inst === VMV4R_V || wb_reg_inst === VMV8R_V 
-  val wb_illegal_insn = wb_ctrl.vector && !(wb_ctrl.vset || whole_registor_vm_inst || whole_registor_vld_vst_inst) && csr.io.vector.get.vconfig.vtype.vill
+  //val whole_registor_vm_inst = wb_reg_inst ===  VMV1R_V || wb_reg_inst === VMV2R_V || wb_reg_inst === VMV4R_V || wb_reg_inst === VMV8R_V 
+  val wb_illegal_insn = wb_ctrl.vector && !(wb_ctrl.vset || whole_registor_vld_vst_inst) && csr.io.vector.get.vconfig.vtype.vill
   
   val (wb_xcpt:Bool, wb_cause) = checkExceptions(List(
     //wzw:若是非法指令的话将wb_cause设置为0x2
