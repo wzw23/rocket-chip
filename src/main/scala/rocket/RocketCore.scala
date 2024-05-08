@@ -1218,7 +1218,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   io.imem.flush_icache := wb_reg_valid && wb_ctrl.fence_i && !io.dmem.s2_nack
   io.imem.might_request := {
     //wzw:when ex_pc_valid and mem_pc_valid is false vector instruction might request
-    imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate || isvectorrun && !io.vpu_commit.exception_vld
+    imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate || isvectorrun || !isvectorrun && io.vpu_commit.exception_vld
     imem_might_request_reg
   }
   io.imem.progress := RegNext(wb_reg_valid && !replay_wb_common)
@@ -1564,7 +1564,7 @@ if(coreParams.useVerif) {
 }
 
 class SaveVpuMessage extends Bundle{
-  val s_v_pc = UInt(32.W)
+  val s_v_pc = UInt(40.W)
 }
 class VpuMessageQueue extends Module {
     val io = IO(new Bundle {
