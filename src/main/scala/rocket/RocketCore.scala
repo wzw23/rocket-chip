@@ -781,14 +781,17 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
+  val vpu_lsu_xcpt = io.vpu_commit.commit_vld && io.vpu_commit.exception_vld
   when (mem_pc_valid) {
     wb_ctrl := mem_ctrl
     //zxr:
     wb_vector_wxd := mem_vector_wxd
     wb_vector_wfd := mem_vector_wfd
     wb_reg_sfence := mem_reg_sfence
-    wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
-      Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
+    //wzw:
+    wb_reg_wdata := Mux(vpu_lsu_xcpt, io.vpu_commit.xcpt_addr,
+      Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
+      Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata)))
    //zxr: add for transfering rs2 to wb stage
     when (mem_ctrl.rocc || mem_reg_sfence || mem_ctrl.vector) {
       wb_reg_rs2 := mem_reg_rs2
@@ -813,7 +816,6 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     wb_reg_wphit := mem_reg_wphit | bpu.io.bpwatch.map { bpw => (bpw.rvalid(0) && mem_reg_load) || (bpw.wvalid(0) && mem_reg_store) }
 
   }
-  val vpu_lsu_xcpt = io.vpu_commit.commit_vld && io.vpu_commit.exception_vld
 
   val wholeregistorInstructions = Seq(VL1RE8_V, VL1RE16_V, VL1RE32_V, VL1RE64_V, 
                             VL2RE8_V, VL2RE16_V, VL2RE32_V, VL2RE64_V,
