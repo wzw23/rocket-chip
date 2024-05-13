@@ -781,17 +781,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   wb_reg_replay := replay_mem && !take_pc_wb
   wb_reg_xcpt := mem_xcpt && !take_pc_wb
   wb_reg_flush_pipe := !ctrl_killm && mem_reg_flush_pipe
-  val vpu_lsu_xcpt = io.vpu_commit.commit_vld && io.vpu_commit.exception_vld
   when (mem_pc_valid) {
     wb_ctrl := mem_ctrl
     //zxr:
     wb_vector_wxd := mem_vector_wxd
     wb_vector_wfd := mem_vector_wfd
     wb_reg_sfence := mem_reg_sfence
-    //wzw:
-    wb_reg_wdata := Mux(vpu_lsu_xcpt, io.vpu_commit.xcpt_addr,
-      Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
-      Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata)))
+    wb_reg_wdata := Mux(mem_scie_pipelined, mem_scie_pipelined_wdata,
+      Mux(!mem_reg_xcpt && mem_ctrl.fp && mem_ctrl.wxd, io.fpu.toint_data, mem_int_wdata))
    //zxr: add for transfering rs2 to wb stage
     when (mem_ctrl.rocc || mem_reg_sfence || mem_ctrl.vector) {
       wb_reg_rs2 := mem_reg_rs2
@@ -816,6 +813,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     wb_reg_wphit := mem_reg_wphit | bpu.io.bpwatch.map { bpw => (bpw.rvalid(0) && mem_reg_load) || (bpw.wvalid(0) && mem_reg_store) }
 
   }
+  val vpu_lsu_xcpt = io.vpu_commit.commit_vld && io.vpu_commit.exception_vld
 
   val wholeregistorInstructions = Seq(VL1RE8_V, VL1RE16_V, VL1RE32_V, VL1RE64_V, 
                             VL2RE8_V, VL2RE16_V, VL2RE32_V, VL2RE64_V,
@@ -916,7 +914,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val vset_issue_vconfig = Wire(new VConfig)
   val vpu_issue_vconfig = Wire(new VConfig)
   vpu_issue_vconfig.vtype := VType.fromUInt(csr.io.vector.get.vconfig.vtype.asUInt,false)
-  vpu_issue_vconfig.vl := io.vpu_commit.update_vl
+  vpu_issue_vconfig.vl := io.vpu_commit.update_vl_data
   // val issue_vstart = Wire(UInt(maxVLMax.log2.W))
   // val issue_vxsat = Wire(Bool())
   val zeroSignal=0.U(((xLen)-8).W)
@@ -1056,7 +1054,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val tval_inst = wb_reg_cause === Causes.illegal_instruction.U
   val tval_valid = wb_xcpt && (tval_any_addr || tval_inst)
   csr.io.gva := wb_xcpt && (tval_any_addr && csr.io.status.v || tval_dmem_addr && wb_reg_hls_or_dv)
-  csr.io.tval := Mux(tval_valid, encodeVirtualAddress(wb_reg_wdata, wb_reg_wdata), 0.U)
+  csr.io.tval := Mux(vpu_lsu_xcpt, encodeVirtualAddress(io.vpu_commit.xcpt_addr,io.vpu_commit.xcpt_addr), Mux(tval_valid, encodeVirtualAddress(wb_reg_wdata, wb_reg_wdata), 0.U))
   csr.io.htval := {
     val htval_valid_imem = wb_reg_xcpt && wb_reg_cause === Causes.fetch_guest_page_fault.U
     val htval_imem = Mux(htval_valid_imem, io.imem.gpa.bits, 0.U)
