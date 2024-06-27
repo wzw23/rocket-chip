@@ -230,6 +230,10 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
   io.uvm_out.commit_order := 0.U
   io.uvm_out.commit_insn := Mux(trap_valid(0).asBool,commit_insn_r,RegEnable(Mux(q.io.out.fire,q.io.out.bits.insn,wb_insn), 0.U, coreParams.useVerif.B))
   io.uvm_out.commit_fused := 0.U
+  val stabilityDetector = Module(new StabilityDetector(32, 1000))
+  stabilityDetector.io.in := io.uvm_out.commit_prevPc
+  val timing_out = stabilityDetector.io.stable
+  dontTouch(timing_out)
 
   val RunPassFail = MuxCase(0.U,Seq(
     ((io.uvm_in.ver_read_withoutrestrict===(0.U)) && (io.uvm_in.wb_reg_inst === (0x6b.U(32.W)))) -> 1.U,
@@ -455,3 +459,39 @@ class UvmVerification(implicit p:Parameters) extends CoreModule{
 
 
 }
+
+import chisel3._
+import chisel3.util._
+
+class StabilityDetector(width: Int, stablePeriod: Int) extends Module {
+  val io = IO(new Bundle {
+    val in = Input(UInt(width.W))  // 输入值
+    val stable = Output(Bool())    // 输出是否稳定
+  })
+
+  val currentValue = RegInit(0.U(width.W))  // 当前值的寄存器
+  val counter = RegInit(0.U(32.W))          // 计数器寄存器
+  val stableSignal = RegInit(false.B)       // 稳定性信号
+
+  // 检测值是否改变
+  when(io.in === currentValue) {
+    // 如果值未改变，增加计数器
+    counter := counter + 1.U
+  } .otherwise {
+    // 如果值改变，重置计数器
+    currentValue := io.in
+    counter := 1.U
+  }
+
+  // 更新稳定性信号
+  when(counter >= stablePeriod.U) {
+    stableSignal := true.B
+  } .otherwise {
+    stableSignal := false.B
+  }
+
+  // 输出
+  io.stable := stableSignal
+}
+
+
