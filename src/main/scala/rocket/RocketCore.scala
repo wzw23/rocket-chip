@@ -1206,7 +1206,8 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     id_do_fence ||
     csr.io.csr_stall ||
     id_reg_pause ||
-    io.traceStall
+    io.traceStall ||
+    vectorQueue.isFull
   }
     ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
 
@@ -1594,7 +1595,7 @@ class InsructionQueue(depth:Int) extends Module{
   })
 
  val queue = Module(new Queue(new vectorInstInfo, entries = depth))
-
+ def isFull = io.cnt === depth.U - 3.U
   queue.io.enq <> io.enqueueInfo
   io.dequeueInfo <> queue.io.deq
   io.cnt <> queue.io.count
