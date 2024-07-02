@@ -1595,7 +1595,7 @@ class InsructionQueue(depth:Int) extends Module{
   })
 
  val queue = Module(new Queue(new vectorInstInfo, entries = depth))
- def isFull = io.cnt === depth.U - 3.U
+ def isFull = io.cnt >= depth.U - 3.U
   queue.io.enq <> io.enqueueInfo
   io.dequeueInfo <> queue.io.deq
   io.cnt <> queue.io.count
