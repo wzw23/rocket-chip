@@ -928,8 +928,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset)
     vio.set_vstart.bits := Mux((wb_valid & wb_ctrl.vset),0.U,update_vstart_data)
     vio.set_vxsat := io.vpu_commit.vxsat
-    vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
-    //vio.set_vs_dirty := false.asBool
+    // vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
+    vio.set_vs_dirty := false.asBool
     }
 
 
