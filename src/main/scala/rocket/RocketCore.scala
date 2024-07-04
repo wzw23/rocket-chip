@@ -405,7 +405,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     !ibuf.io.inst(0).bits.rvc && (id_system_insn && csr.io.decode(0).system_illegal) ||
     id_illegal_rnum ||
     vfp_illegal_inst || 
-    id_ctrl.vector && csr.io.decode(0).vector_illegal
+    (id_ctrl.vector || id_ctrl.vset)  && csr.io.decode(0).vector_illegal 
 //    ||
 //    id_ctrl.vector && csr.io.vector.get.vstart =/= 0.U
   val id_virtual_insn = id_ctrl.legal &&
@@ -923,13 +923,13 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   vset_issue_vconfig.vl := VType.computeVL(wb_avl,zimm,csr.io.vector.get.vconfig.vl,wb_usecurrent,wb_usemax,wb_usezero)
   csr.io.vector.foreach { vio =>
     vio.set_vconfig.bits := Mux((wb_valid & wb_ctrl.vset),vset_issue_vconfig,vpu_issue_vconfig)
-    vio.set_vconfig.valid := (wb_valid & wb_ctrl.vset) | (io.vpu_commit.commit_vld & io.vpu_commit.update_vl)
+    vio.set_vconfig.valid := ((wb_valid & wb_ctrl.vset) | (io.vpu_commit.commit_vld & io.vpu_commit.update_vl) ) && (!wb_xcpt)
     //wzw:change for updating vstart All vector instructions, including vset{i}vl{i}, reset the vstart CSR to zero
-    vio.set_vstart.valid := ((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset)
+    vio.set_vstart.valid := (((io.vpu_commit.commit_vld)&(update_vstart))|(wb_valid & wb_ctrl.vset))&(!wb_xcpt)
     vio.set_vstart.bits := Mux((wb_valid & wb_ctrl.vset),0.U,update_vstart_data)
     vio.set_vxsat := io.vpu_commit.vxsat
-    // vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector))
-    vio.set_vs_dirty := false.asBool
+    vio.set_vs_dirty := (wb_valid &(wb_ctrl.vset|wb_ctrl.vector)) &&(!wb_xcpt)
+    // vio.set_vs_dirty := false.asBool
     }
 
 
