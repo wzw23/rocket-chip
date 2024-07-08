@@ -1029,7 +1029,16 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //zxr: change retire signal for vpu
   csr.io.retire := !wb_ctrl.vector && wb_valid ||  io.vpu_commit.commit_vld && !io.vpu_commit.exception_vld
   csr.io.inst(0) := (if (usingCompressed) Cat(Mux(wb_reg_raw_inst(1, 0).andR, wb_reg_inst >> 16, 0.U), wb_reg_raw_inst(15, 0)) else wb_reg_inst)
-  csr.io.interrupts := io.interrupts
+   //wzw 如果发送到队列中则认为指令已经发出去了
+  val table = RegInit(0.U(4.W))
+  when(vectorQueue.io.enqueueInfo.valid&io.vpu_commit.commit_vld){
+    table := table;
+  }.elsewhen(vectorQueue.io.enqueueInfo.valid) {table := table + 1.U}
+  .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
+  when(table === 0.U){
+    csr.io.interrupts := io.interrupts
+  }
+  csr.io.interrupts := DontCare
   csr.io.hartid := io.hartid
   io.fpu.fcsr_rm := csr.io.fcsr_rm
   //add vpu fflags process
@@ -1173,12 +1182,6 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   //if vpu busy, satll rocket，jyf
   //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
   //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
-  //wzw 如果发送到队列中则认为指令已经发出去了
-  val table = RegInit(0.U(4.W))
-  when(vectorQueue.io.enqueueInfo.valid&io.vpu_commit.commit_vld){
-    table := table;
-  }.elsewhen(vectorQueue.io.enqueueInfo.valid) {table := table + 1.U}
-  .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
   val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
 
   //zxr: check if there are any vector instructions in the pipeline
