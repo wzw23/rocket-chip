@@ -432,11 +432,13 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   bpu.io.ea := mem_reg_wdata
   bpu.io.mcontext := csr.io.mcontext
   bpu.io.scontext := csr.io.scontext
-
+  
+  val interrupt_pending = WireInit(false.B)
+  val interrupt_cause_pending = Wire(UInt())
   val id_xcpt0 = ibuf.io.inst(0).bits.xcpt0
   val id_xcpt1 = ibuf.io.inst(0).bits.xcpt1
   val (id_xcpt, id_cause) = checkExceptions(List(
-    (csr.io.interrupt, csr.io.interrupt_cause),
+    (interrupt_pending, interrupt_cause_pending),
     (bpu.io.debug_if,  CSR.debugTriggerCause.U),
     (bpu.io.xcpt_if,   Causes.breakpoint.U),
     (id_xcpt0.pf.inst, Causes.fetch_page_fault.U),
@@ -563,7 +565,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   ex_reg_valid := !ctrl_killd
   ex_reg_replay := !take_pc && ibuf.io.inst(0).valid && ibuf.io.inst(0).bits.replay
   ex_reg_xcpt := !ctrl_killd && id_xcpt
-  ex_reg_xcpt_interrupt := !take_pc && ibuf.io.inst(0).valid && csr.io.interrupt
+  ex_reg_xcpt_interrupt := !take_pc && ibuf.io.inst(0).valid && interrupt_pending //csr.io.interrupt
 
    //zxr:
    //wzw:fix here because fpu and core are in same cycle,so ex_reg_hls is wire type
@@ -628,7 +630,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       ex_reg_rs_msb(0) := inst >> log2Ceil(bypass_sources.size)
     }
   }
-  when (!ctrl_killd || csr.io.interrupt || ibuf.io.inst(0).bits.replay) {
+  when (!ctrl_killd || interrupt_pending || ibuf.io.inst(0).bits.replay) {  //csr.io.interrupt
     ex_reg_cause := id_cause
     ex_reg_inst := id_inst(0)
     ex_reg_raw_inst := id_raw_inst(0)
@@ -936,7 +938,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 //zxr: issue queue
 val vectorQueue = Module(new InsructionQueue(12))
 
-vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);
+vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt) && !csr.io.interrupt;  // zxr:stop issue immediately when interrupt occurs
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
 vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
 vectorQueue.io.enqueueInfo.bits.v_fp_rs1 := wb_reg_fp_rs1
@@ -1035,10 +1037,25 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     table := table;
   }.elsewhen(vectorQueue.io.enqueueInfo.valid) {table := table + 1.U}
   .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
-  when(table === 0.U){
-    csr.io.interrupts := io.interrupts
+  //if vpu busy, satll rocket，jyf
+  //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
+  //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
+  val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
+  // Interrupt Queue
+  val interruptsQueue = Module(new InterruptsQueue(5))
+  interruptsQueue.io.in.valid := csr.io.interrupt
+  interruptsQueue.io.in.bits.interrupt := csr.io.interrupt
+  interruptsQueue.io.in.bits.cause := csr.io.interrupt_cause
+  interruptsQueue.io.out.ready := !isvectorrun 
+  when(!interruptsQueue.isEmpty){
+    interrupt_pending := interruptsQueue.io.out.bits.interrupt && !isvectorrun
+    interrupt_cause_pending := interruptsQueue.io.out.bits.cause
+  }.otherwise{
+    interrupt_pending := false.B
+    interrupt_cause_pending := DontCare
   }
-  csr.io.interrupts := DontCare
+  
+  csr.io.interrupts := io.interrupts
   csr.io.hartid := io.hartid
   io.fpu.fcsr_rm := csr.io.fcsr_rm
   //add vpu fflags process
@@ -1179,11 +1196,6 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val rocc_blocked = Reg(Bool())
   rocc_blocked := !wb_xcpt && !io.rocc.cmd.ready && (io.rocc.cmd.valid || rocc_blocked)
 
-  //if vpu busy, satll rocket，jyf
-  //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
-  //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
-  val isvectorrun = ((table===0.U) && io.vpu_issue.fire)||(table =/= 0.U)
-
   //zxr: check if there are any vector instructions in the pipeline
   //**
   val vector_in_pipe = (ex_reg_valid && ex_ctrl.vector) || (mem_reg_valid && mem_ctrl.vector) ||(wb_reg_valid && wb_ctrl.vector)
@@ -1212,7 +1224,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     io.traceStall ||
     vectorQueue.isFull
   }
-    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
+    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending //csr.io.interrupt
 
   io.imem.req.valid := take_pc
   io.imem.req.bits.speculative := !take_pc_wb
@@ -1567,6 +1579,24 @@ if(coreParams.useVerif) {
     }
   }
 }
+  class InterruptsMessage extends Bundle{
+    val interrupt = Bool()
+    val cause = UInt()
+  }
+
+  class InterruptsQueue(depth:Int) extends Module{
+    val io = IO(new Bundle {
+        val in = Flipped(Decoupled(new InterruptsMessage))
+        val out = Decoupled(new InterruptsMessage)
+        val cnt = Output(UInt(4.W))
+      })
+    def isEmpty = io.cnt === 0.U
+    val q = Module(new Queue(new InterruptsMessage,entries = depth))
+    q.io.enq <> io.in
+    io.out <> q.io.deq
+    io.cnt <> q.io.count
+  }
+
 
 class SaveVpuMessage extends Bundle{
   val s_v_pc = UInt(40.W)
