@@ -1196,7 +1196,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     interrupt_pending := false.B
     interrupt_cause_pending := DontCare
   }
-  
+
   val ctrl_stalld = {
     id_ex_hazard || id_mem_hazard || id_wb_hazard || id_sboard_hazard ||
     csr.io.singleStep && (ex_reg_valid || mem_reg_valid || wb_reg_valid) ||
@@ -1218,10 +1218,9 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     csr.io.csr_stall ||
     id_reg_pause ||
     io.traceStall ||
-    vectorQueue.isFull ||
-    csr.io.interrupt
+    vectorQueue.isFull 
   }
-    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending //csr.io.interrupt 
+    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending || csr.io.interrupt 
 
   io.imem.req.valid := take_pc
   io.imem.req.bits.speculative := !take_pc_wb
