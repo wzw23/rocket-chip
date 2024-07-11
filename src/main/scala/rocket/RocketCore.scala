@@ -1218,9 +1218,10 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     csr.io.csr_stall ||
     id_reg_pause ||
     io.traceStall ||
-    vectorQueue.isFull 
+    vectorQueue.isFull ||
+    csr.io.interrupt && !interrupt_pending
   }
-    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending || csr.io.interrupt 
+    ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending 
 
   io.imem.req.valid := take_pc
   io.imem.req.bits.speculative := !take_pc_wb
