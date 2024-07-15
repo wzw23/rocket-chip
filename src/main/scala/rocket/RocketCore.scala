@@ -938,7 +938,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
 //zxr: issue queue
 val vectorQueue = Module(new InsructionQueue(12))
-
+vectorQueue.io.flush := vpu_lsu_xcpt
 vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);  
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
 vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
@@ -1189,7 +1189,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val vector_in_pipe = (ex_reg_valid && ex_ctrl.vector) || (mem_reg_valid && mem_ctrl.vector) ||(wb_reg_valid && wb_ctrl.vector)
   //**
   
-  when(csr.io.interrupt && (!isvectorrun || vector_in_pipe ) && !wb_xcpt){
+  when(csr.io.interrupt && (!isvectorrun || vector_in_pipe ) && !wb_xcpt || csr.io.interrupt && vpu_lsu_xcpt ){
     interrupt_pending := true.B
     interrupt_cause_pending := csr.io.interrupt_cause
   }.otherwise{
@@ -1219,7 +1219,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     id_reg_pause ||
     io.traceStall ||
     vectorQueue.isFull ||
-    csr.io.interrupt && !interrupt_pending
+    csr.io.interrupt && !interrupt_pending && !wb_xcpt
   }
     ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending 
 
@@ -1604,15 +1604,16 @@ class InsructionQueue(depth:Int) extends Module{
     val enqueueInfo = Flipped(Decoupled(new vectorInstInfo)) 
     val dequeueInfo = Decoupled(new vectorInstInfo)
     val cnt = Output(UInt(4.W))
+    val flush = Input(Bool())
   })
 
- val queue = Module(new Queue(new vectorInstInfo, entries = depth))
+ val queue = Module(new Queue(new vectorInstInfo, entries = depth,hasFlush = true))
  def isFull = io.cnt >= depth.U - 3.U
   queue.io.enq <> io.enqueueInfo
   io.dequeueInfo <> queue.io.deq
   io.cnt <> queue.io.count
+  queue.io.flush.getOrElse(false.B) := io.flush
 }
- 
 
 class RegFile(n: Int, w: Int, zero: Boolean = false) {
   val rf = Mem(n, UInt(w.W))
