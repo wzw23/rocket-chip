@@ -938,7 +938,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
 //zxr: issue queue
 val vectorQueue = Module(new InsructionQueue(12))
-vectorQueue.io.flush := vpu_lsu_xcpt
+vectorQueue.io.flush := vpu_lsu_xcpt || io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst
 vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);  
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
 vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
@@ -1038,6 +1038,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     table := table;
   }.elsewhen(vectorQueue.io.enqueueInfo.valid) {table := table + 1.U}
   .elsewhen(io.vpu_commit.commit_vld) {table := table - 1.U}
+  when (vpu_lsu_xcpt || io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst){table := 0.U}
   //if vpu busy, satll rocket，jyf
   //not ready，要stall住标量和向量的发送，故ctrl_stalld置1，并导致ctrl_killd置1
   //isvectorrun,有向量指令在执行，但如果下一条仍是向量且ready仍能发
@@ -1189,7 +1190,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val vector_in_pipe = (ex_reg_valid && ex_ctrl.vector) || (mem_reg_valid && mem_ctrl.vector) ||(wb_reg_valid && wb_ctrl.vector)
   //**
   
-  when(csr.io.interrupt && (!isvectorrun || vector_in_pipe ) && !wb_xcpt || csr.io.interrupt && vpu_lsu_xcpt ){
+  when(csr.io.interrupt && (!isvectorrun || vector_in_pipe ) && !wb_xcpt ){
     interrupt_pending := true.B
     interrupt_cause_pending := csr.io.interrupt_cause
   }.otherwise{
@@ -1219,7 +1220,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
     id_reg_pause ||
     io.traceStall ||
     vectorQueue.isFull ||
-    csr.io.interrupt && !interrupt_pending && !wb_xcpt
+    (csr.io.interrupt && !interrupt_pending && !wb_xcpt)
   }
     ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || interrupt_pending 
 
