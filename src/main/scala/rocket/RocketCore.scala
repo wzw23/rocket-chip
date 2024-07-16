@@ -1190,7 +1190,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   val vector_in_pipe = (ex_reg_valid && ex_ctrl.vector) || (mem_reg_valid && mem_ctrl.vector) ||(wb_reg_valid && wb_ctrl.vector)
   //**
   
-  when(csr.io.interrupt && (!isvectorrun || vector_in_pipe ) && !wb_xcpt ){
+  when(csr.io.interrupt && !isvectorrun && !vector_in_pipe && !wb_xcpt ){
     interrupt_pending := true.B
     interrupt_cause_pending := csr.io.interrupt_cause
   }.otherwise{
