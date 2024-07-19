@@ -938,7 +938,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
 //zxr: issue queue
 val vectorQueue = Module(new InsructionQueue(12))
-vectorQueue.io.flush := vpu_lsu_xcpt || io.vpu_commit.commit_vld&&io.vpu_commit.illegal_inst
+vectorQueue.io.flush := vpu_lsu_xcpt || io.vpu_commit.commit_vld && io.vpu_commit.illegal_inst
 vectorQueue.io.enqueueInfo.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);  
 vectorQueue.io.enqueueInfo.bits.v_rs1 := wb_reg_rs1
 vectorQueue.io.enqueueInfo.bits.v_rs2 := wb_reg_rs2
@@ -950,6 +950,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
   svmqueue.io.in.valid := wb_reg_valid && wb_ctrl.vector && !(wb_xcpt);
   svmqueue.io.in.bits.s_v_pc := wb_reg_pc
   svmqueue.io.out.ready := io.vpu_commit.commit_vld
+  svmqueue.io.flush := vpu_lsu_xcpt || io.vpu_commit.commit_vld && io.vpu_commit.illegal_inst
 
   //zxr: issue vector instructions during the WB stage
 
@@ -1586,12 +1587,15 @@ class VpuMessageQueue extends Module {
       val in = Flipped(Decoupled(new SaveVpuMessage))
       val out = Decoupled(new SaveVpuMessage)
       val cnt = Output(UInt(4.W))
+      val flush = Input(Bool())
     })
-    val q = Module(new Queue(new SaveVpuMessage,entries = 12))
+    val q = Module(new Queue(new SaveVpuMessage,entries = 12,hasFlush = true))
     q.io.enq <> io.in
     io.out <> q.io.deq
     io.cnt <> q.io.count
+    q.io.flush.getOrElse(false.B) := io.flush
   }
+
 //zxr
 class vectorInstInfo extends Bundle{
   val v_inst = UInt(32.W)
