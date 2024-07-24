@@ -168,6 +168,8 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   vpu.io.in <> core.io.vpu_issue
   core.io.vpu_commit <> vpu.io.out.rvuCommit
   core.io.vpu_rfdata <> vpu.io.rfData
+  val custom = Module(new Crypto)
+  custom.io.vcix <> vpu.io.vcix
   //zxr
   core.io.vpu_memory <> vpu.io.rvuMemory
   dontTouch(core.io.vpu_issue)
