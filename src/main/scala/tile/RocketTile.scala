@@ -17,6 +17,7 @@ import freechips.rocketchip.prci.{ClockSinkParameters}
 import smartVector.{SmartVector}
 import chisel3.{dontTouch}
 import smartVector.SmartVector
+import cypto._
 
 case class RocketTileBoundaryBufferParams(force: Boolean = false)
 
