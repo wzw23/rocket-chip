@@ -954,7 +954,7 @@ vectorQueue.io.dequeueInfo.ready := io.vpu_issue.ready
 
   //zxr: issue vector instructions during the WB stage
 
-  io.vpu_issue.valid := vectorQueue.io.dequeueInfo.valid 
+  io.vpu_issue.valid := vectorQueue.io.dequeueInfo.valid && !(vpu_lsu_xcpt || io.vpu_commit.commit_vld && io.vpu_commit.illegal_inst);
   io.vpu_issue.bits.inst := vectorQueue.io.dequeueInfo.bits.v_inst
   io.vpu_issue.bits.rs1 := vectorQueue.io.dequeueInfo.bits.v_rs1
   io.vpu_issue.bits.rs2 := vectorQueue.io.dequeueInfo.bits.v_rs2
