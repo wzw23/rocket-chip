@@ -143,6 +143,8 @@ class IDecode(aluFn: ALUFN = ALUFN())(implicit val p: Parameters) extends Decode
    IN_VC_V_VVV->List(Y,N,N,N,N,N,N,N,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
     IN_VC_IVV-> List(Y,N,N,N,N,N,N,N,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
     IN_VC_VVV-> List(Y,N,N,N,N,N,N,N,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
+    IN_VC_V_V ->List(Y,N,N,N,N,N,N,N,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
+
     VL_XE8->    List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
     VL_XE16->   List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
     VL_XE32->   List(Y,N,N,N,N,N,N,Y,N,N,N,N,A2_X,   A1_X,   IMM_X, DW_X,  aluFn.FN_X,     N,M_X,        N,N,N,N,N,N,N,CSR.N,N,N,N,N,Y,N),
