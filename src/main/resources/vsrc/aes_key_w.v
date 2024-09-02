@@ -1,9 +1,12 @@
-`default_nettype none
 
 module aes_key_w(
                    input wire [127 : 0]  key,
-                   input wire    [3 : 0] round,
-                   output wire [127 : 0] round_key);
+                   input wire    [4 : 0] round,
+                   output wire [127 : 0] round_key,
+
+                   output wire [31:0] sbox_out4,
+		               input wire [31:0] sbox_in4
+                   );
       //G function:sbox=>replace=>add
       wire [31 : 0] rconw, rotstw, tw, trw;
       wire [31:0] tmp_sboxw,new_sboxw;
@@ -22,7 +25,9 @@ module aes_key_w(
       assign w3 = w3_p ^ w2_p ^ w1_p ^ w0_p ^ trw;
       assign round_key = {w0,w1,w2,w3};
 
-      aes_4sbox aes_4sbox (.sboxw(tmp_sboxw),. new_sboxw(new_sboxw));
+      // aes_4sbox aes_4sbox (.sboxw(tmp_sboxw),. new_sboxw(new_sboxw));
+      assign sbox_out4 = tmp_sboxw;
+      assign new_sboxw = sbox_in4;
 
       always @*
         begin : rcon_logic

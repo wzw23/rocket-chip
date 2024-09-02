@@ -37,7 +37,6 @@
 //
 //======================================================================
 
-`default_nettype none
 
 module aes_4sbox(
                 input wire [31 : 0]  sboxw,

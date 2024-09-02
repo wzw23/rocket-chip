@@ -1,4 +1,3 @@
-`default_nettype none
 
 module aes_en_de(
                           input wire            en_de,
@@ -6,7 +5,16 @@ module aes_en_de(
 
                           input wire [127 : 0]  block,
                           input wire [127 : 0]  round_key,
-                          output wire [127 : 0] new_block );
+                          output wire [127 : 0] new_block, 
+                          output wire [31:0] sbox_out1,
+		                      input wire [31:0] sbox_in1,
+		                      output wire [31:0] sbox_out2,
+		                      input wire [31:0] sbox_in2,
+		                      output wire [31:0] sbox_out3,
+		                      input wire [31:0] sbox_in3,
+		                      output wire [31:0] sbox_out4,
+		                      input wire [31:0] sbox_in4
+                          );
   //----------------------------------------------------------------
   // Round functions with sub functions.
   //----------------------------------------------------------------
@@ -207,15 +215,27 @@ module aes_en_de(
   wire [127:0] inv_shiftrows_block;
 
   
-  aes_4sbox aes_4sbox_a(.sboxw(block[127:96]),.new_sboxw(block_w0));
-  aes_4sbox aes_4sbox_b(.sboxw(block[95:64]),.new_sboxw(block_w1));
-  aes_4sbox aes_4sbox_c(.sboxw(block[63:32]),.new_sboxw(block_w2));
-  aes_4sbox aes_4sbox_d(.sboxw(block[31:0]),.new_sboxw(block_w3));
+  assign sbox_out1 = en_de? block[31:0] : inv_sbox_in[31:0];
+  assign sbox_out2 = en_de? block[63:32] : inv_sbox_in[63:32];
+  assign sbox_out3 = en_de? block[95:64] : inv_sbox_in[95:64];
+  assign sbox_out4 = en_de? block[127:96] : inv_sbox_in[127:96];
+  assign block_w0 = sbox_in4;
+  assign block_w1 = sbox_in3;
+  assign block_w2 = sbox_in2;
+  assign block_w3 = sbox_in1;
+  assign inv_sbox_out[31:0] = sbox_in1;
+  assign inv_sbox_out[63:32] = sbox_in2;
+  assign inv_sbox_out[95:64] = sbox_in3;
+  assign inv_sbox_out[127:96] = sbox_in4;
+  // aes_4sbox aes_4sbox_a(.sboxw(block[127:96]),.new_sboxw(block_w0));
+  // aes_4sbox aes_4sbox_b(.sboxw(block[95:64]),.new_sboxw(block_w1));
+  // aes_4sbox aes_4sbox_c(.sboxw(block[63:32]),.new_sboxw(block_w2));
+  // aes_4sbox aes_4sbox_d(.sboxw(block[31:0]),.new_sboxw(block_w3));
 
-  aes_4inv_sbox aes_4inv_sbox_first (.sboxw(inv_sbox_in[31:0]),  .new_sboxw(inv_sbox_out[31:0]));
-  aes_4inv_sbox aes_4inv_sbox_second(.sboxw(inv_sbox_in[63:32]), .new_sboxw(inv_sbox_out[63:32]));
-  aes_4inv_sbox aes_4inv_sbox_third (.sboxw(inv_sbox_in[95:64]), .new_sboxw(inv_sbox_out[95:64]));
-  aes_4inv_sbox aes_4inv_sbox_fourth(.sboxw(inv_sbox_in[127:96]),.new_sboxw(inv_sbox_out[127:96]));
+  // aes_4inv_sbox aes_4inv_sbox_first (.sboxw(inv_sbox_in[31:0]),  .new_sboxw(inv_sbox_out[31:0]));
+  // aes_4inv_sbox aes_4inv_sbox_second(.sboxw(inv_sbox_in[63:32]), .new_sboxw(inv_sbox_out[63:32]));
+  // aes_4inv_sbox aes_4inv_sbox_third (.sboxw(inv_sbox_in[95:64]), .new_sboxw(inv_sbox_out[95:64]));
+  // aes_4inv_sbox aes_4inv_sbox_fourth(.sboxw(inv_sbox_in[127:96]),.new_sboxw(inv_sbox_out[127:96]));
 
 //en
   assign old_block          = {block_w0, block_w1, block_w2, block_w3};
